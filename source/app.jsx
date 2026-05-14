@@ -46,7 +46,6 @@ function App() {
   const [addKind, setAddKind]     = React.useState('gasto');
   const [addPrefill, setAddPrefill] = React.useState(null);
   const [accountsOpen, setAccountsOpen]   = React.useState(false);
-  const [scanOpen, setScanOpen]           = React.useState(false);
   const [remindersOpen, setRemindersOpen] = React.useState(false);
   const [assistantOpen, setAssistantOpen] = React.useState(false);
   const [catCreatorOpen, setCatCreatorOpen] = React.useState(false);
@@ -210,7 +209,6 @@ function App() {
         onClose={() => { setAddOpen(false); setAddPrefill(null); }}
         defaultKind={addKind}
         prefill={addPrefill}
-        openScan={() => setScanOpen(true)}
         customCats={customCats}
         customSources={customSources}
         goals={goals}
@@ -222,8 +220,6 @@ function App() {
       <AccountsModal   open={accountsOpen}   onClose={() => setAccountsOpen(false)} accounts={accounts} onCreate={() => setAccCreatorOpen(true)} />
       <RemindersModal  open={remindersOpen}  onClose={() => setRemindersOpen(false)} />
       <AssistantModal  open={assistantOpen}  onClose={() => setAssistantOpen(false)} />
-      <ScanModal       open={scanOpen}       onClose={() => setScanOpen(false)}
-                       onResult={(e) => { setAddPrefill(e); setAddKind('gasto'); setAddOpen(true); setScanOpen(false); }} />
 
       <CategoryCreator open={catCreatorOpen} onClose={() => setCatCreatorOpen(false)} kind={catCreatorKind} onCreate={onCategoryCreated} />
       <AccountCreator  open={accCreatorOpen} onClose={() => setAccCreatorOpen(false)} onCreate={onAccountCreated} />
