@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/gastos-familia/static/css/main.ef1388e2.css",
+    "main.js": "/gastos-familia/static/js/main.ad563752.js",
+    "index.html": "/gastos-familia/index.html",
+    "main.ef1388e2.css.map": "/gastos-familia/static/css/main.ef1388e2.css.map",
+    "main.ad563752.js.map": "/gastos-familia/static/js/main.ad563752.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.ef1388e2.css",
+    "static/js/main.ad563752.js"
+  ]
+}
