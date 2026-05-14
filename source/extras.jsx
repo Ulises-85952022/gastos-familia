@@ -150,7 +150,7 @@ function AccountRow({ a }) {
 function FullSheet({ children, title, onClose, accent = T.ink }) {
   return (
     <div style={{
-      position: 'absolute', inset: 0, zIndex: 75,
+      position: 'fixed', inset: 0, zIndex: 75,
       background: T.bg, display: 'flex', flexDirection: 'column',
       animation: 'slideUp 280ms cubic-bezier(.2,.7,.3,1)',
     }}>
@@ -217,7 +217,7 @@ function ScanModal({ open, onClose, onResult }) {
 
   return (
     <div style={{
-      position: 'absolute', inset: 0, zIndex: 78,
+      position: 'fixed', inset: 0, zIndex: 78,
       background: '#000', display: 'flex', flexDirection: 'column',
       color: '#fff',
       animation: 'fadeIn 200ms',

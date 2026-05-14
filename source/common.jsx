@@ -168,7 +168,7 @@ function TabBar({ tab, onTab, onAdd }) {
   ];
   return (
     <div style={{
-      position: 'absolute', left: 0, right: 0, bottom: 0,
+      position: 'fixed', left: 0, right: 0, bottom: 0,
       padding: '8px 12px 22px',
       background: 'rgba(250,247,242,0.92)',
       backdropFilter: 'blur(16px) saturate(180%)',

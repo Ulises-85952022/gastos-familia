@@ -3,10 +3,10 @@
 // ═══════════════════════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════
-function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, openAssistant, openReminders, accounts, openAccountCreator }) {
-  const m = monthOverride || APP_DATA.month;
+function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, openAssistant, openReminders, accounts, openAccountCreator, goals }) {
+  const m = monthOverride || { income: 0, expenses: 0, savings: 0, label: '' };
   const disponible = m.income - m.expenses - m.savings;
-  const pctUsado = Math.round(((m.expenses + m.savings) / m.income) * 100);
+  const pctUsado = m.income > 0 ? Math.round(((m.expenses + m.savings) / m.income) * 100) : 0;
 
   const segments = [
     { value: m.expenses, color: T.red },
@@ -141,7 +141,7 @@ function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, op
               { label: 'Ahorrado',   v: m.savings,  c: T.blue },
               { label: 'Disponible', v: Math.max(0, m.income - m.expenses - m.savings), c: T.muted },
             ].map(r => {
-              const pct = Math.round((r.v / m.income) * 100);
+              const pct = m.income > 0 ? Math.round((r.v / m.income) * 100) : 0;
               return (
                 <div key={r.label}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -187,8 +187,8 @@ function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, op
       {/* Metas */}
       <Section title="Metas de ahorro" action="Ver todas">
         <div style={{ display: 'flex', gap: 12, overflowX: 'auto', margin: '0 -18px', padding: '0 18px', scrollbarWidth: 'none' }}>
-          {APP_DATA.goals.slice(0, 3).map(g => {
-            const pct = Math.round((g.saved / g.target) * 100);
+          {(goals || []).slice(0, 3).map(g => {
+            const pct = g.target > 0 ? Math.round((g.saved / g.target) * 100) : 0;
             return (
               <Card key={g.id} pad={14} style={{ flex: '0 0 200px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -253,9 +253,14 @@ const miniLink = {
 // ═══════════════════════════════════════════════════════════
 // MOVIMIENTOS
 // ═══════════════════════════════════════════════════════════
-function MovimientosScreen({ transactions, activeMember }) {
+function MovimientosScreen({ transactions, activeMember, onDelete }) {
   const [filter, setFilter] = React.useState('todos');
   const [member, setMember] = React.useState('todos');
+  const currentMonthLabel = React.useMemo(() => {
+    const d = new Date();
+    const m = d.toLocaleString('es-MX', { month: 'long' });
+    return m.charAt(0).toUpperCase() + m.slice(1) + ' ' + d.getFullYear();
+  }, []);
 
   const filtered = transactions.filter(t => {
     if (filter !== 'todos' && t.kind !== filter) return false;
@@ -278,7 +283,7 @@ function MovimientosScreen({ transactions, activeMember }) {
     <div style={{ padding: '0 18px 120px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ paddingTop: 8 }}>
         <div style={{ fontSize: 13, color: T.muted, fontWeight: 500 }}>Movimientos</div>
-        <div style={{ fontSize: 24, fontWeight: 700, color: T.ink, letterSpacing: -0.3 }}>Mayo 2026</div>
+        <div style={{ fontSize: 24, fontWeight: 700, color: T.ink, letterSpacing: -0.3 }}>{currentMonthLabel}</div>
       </div>
 
       {/* Summary chips */}
@@ -304,8 +309,9 @@ function MovimientosScreen({ transactions, activeMember }) {
       {/* Grouped list */}
       {Object.keys(grouped).length === 0 ? (
         <Card style={{ textAlign: 'center', padding: '40px 20px', color: T.muted }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>🔍</div>
-          <div style={{ fontWeight: 600 }}>Sin movimientos con esos filtros</div>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>{transactions.length === 0 ? '📋' : '🔍'}</div>
+          <div style={{ fontWeight: 600 }}>{transactions.length === 0 ? 'Aún no hay movimientos' : 'Sin movimientos con esos filtros'}</div>
+          {transactions.length === 0 && <div style={{ fontSize: 12, marginTop: 6 }}>Toca + para registrar tu primer gasto o ingreso</div>}
         </Card>
       ) : Object.entries(grouped).map(([day, items]) => {
         const dayTotal = items.reduce((s, t) => s + (t.kind === 'gasto' ? -t.amount : t.amount), 0);
@@ -318,7 +324,7 @@ function MovimientosScreen({ transactions, activeMember }) {
               </div>
             </div>
             <Card pad={0}>
-              {items.map((t, i) => <TxRow key={t.id} t={t} last={i === items.length - 1} activeMember={activeMember} />)}
+              {items.map((t, i) => <TxRow key={t.id} t={t} last={i === items.length - 1} activeMember={activeMember} onDelete={onDelete} />)}
             </Card>
           </div>
         );
@@ -341,7 +347,7 @@ function SummaryStat({ label, value, color, sign }) {
   );
 }
 
-function TxRow({ t, last, activeMember }) {
+function TxRow({ t, last, activeMember, onDelete }) {
   const isIncome = t.kind === 'ingreso';
   const isSaving = t.kind === 'ahorro';
   const meta = isIncome ? APP_DATA.incomeSources[t.src] : (t.cat ? APP_DATA.categories[t.cat] : null);
@@ -372,8 +378,17 @@ function TxRow({ t, last, activeMember }) {
           )}
         </div>
       </div>
-      <div style={{ fontSize: 15, fontWeight: 700, color, letterSpacing: -0.2 }}>
-        {sign}{fmt(t.amount).replace('$', '$').replace('−', '')}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color, letterSpacing: -0.2 }}>
+          {sign}{fmt(t.amount).replace('$', '$').replace('−', '')}
+        </div>
+        {onDelete && (
+          <button onClick={() => onDelete(t.id)} style={{
+            border: 'none', background: 'transparent', cursor: 'pointer',
+            color: T.muted, fontSize: 16, padding: '2px 4px', lineHeight: 1,
+            opacity: 0.5,
+          }}>×</button>
+        )}
       </div>
     </div>
   );
@@ -464,10 +479,9 @@ const secondaryBtn = {
 // ═══════════════════════════════════════════════════════════
 // FAMILIA
 // ═══════════════════════════════════════════════════════════
-function FamiliaScreen({ user, activeMember }) {
-  // contribution per member from sample data
+function FamiliaScreen({ user, activeMember, transactions }) {
   const contribByMember = {};
-  APP_DATA.transactions.forEach(t => {
+  (transactions || []).forEach(t => {
     contribByMember[t.who] ||= { in: 0, out: 0, sav: 0 };
     if (t.kind === 'ingreso') contribByMember[t.who].in += t.amount;
     else if (t.kind === 'gasto') contribByMember[t.who].out += t.amount;
@@ -659,7 +673,7 @@ function AddSheet({ open, onClose, defaultKind = 'gasto', onSave, openScan, pref
 
   return (
     <div style={{
-      position: 'absolute', inset: 0, zIndex: 70,
+      position: 'fixed', inset: 0, zIndex: 70,
       background: 'rgba(20,18,15,0.45)',
       display: 'flex', alignItems: 'flex-end',
       animation: 'fadeIn 200ms ease',

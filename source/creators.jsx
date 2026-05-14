@@ -93,7 +93,7 @@ function CategoryCreator({ open, onClose, kind, onCreate }) {
 
   return (
     <div onClick={onClose} style={{
-      position: 'absolute', inset: 0, zIndex: 85,
+      position: 'fixed', inset: 0, zIndex: 85,
       background: 'rgba(20,18,15,0.55)',
       display: 'flex', alignItems: 'flex-end',
       animation: 'fadeIn 200ms',
@@ -197,7 +197,7 @@ function AccountCreator({ open, onClose, onCreate }) {
 
   return (
     <div onClick={onClose} style={{
-      position: 'absolute', inset: 0, zIndex: 85,
+      position: 'fixed', inset: 0, zIndex: 85,
       background: 'rgba(20,18,15,0.55)',
       display: 'flex', alignItems: 'flex-end',
       animation: 'fadeIn 200ms',
