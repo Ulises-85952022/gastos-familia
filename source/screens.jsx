@@ -1,4 +1,67 @@
-// Screens — Dashboard, Movimientos, Ahorros, Presupuestos, Familia, AddSheet
+// Screens — Dashboard, Movimientos, Ahorros, Familia, AddSheet, ProfileSelector
+
+// ═══════════════════════════════════════════════════════════
+// PROFILE SELECTOR — shown on first load
+// ═══════════════════════════════════════════════════════════
+function ProfileSelector({ members, onSelect, onAddMember }) {
+  return (
+    <div style={{
+      width: '100%', minHeight: '100vh',
+      background: T.bg, display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      padding: '40px 24px 60px',
+      fontFamily: '"Bricolage Grotesque", -apple-system, system-ui, sans-serif',
+    }}>
+      <div style={{ textAlign: 'center', marginBottom: 40 }}>
+        <div style={{ fontSize: 52, marginBottom: 12 }}>💰</div>
+        <div style={{ fontSize: 28, fontWeight: 700, color: T.ink, letterSpacing: -0.5 }}>Gastos Familia</div>
+        <div style={{ fontSize: 15, color: T.muted, marginTop: 8 }}>
+          {members.length === 0 ? 'Crea tu primer perfil para comenzar' : '¿Quién eres?'}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 360 }}>
+        {members.map(m => (
+          <button key={m.id} onClick={() => onSelect(m.id)} style={{
+            display: 'flex', alignItems: 'center', gap: 16,
+            background: T.card, border: '1px solid ' + T.border,
+            borderRadius: 20, padding: '16px 20px',
+            cursor: 'pointer', textAlign: 'left', width: '100%',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+          }}>
+            <div style={{
+              width: 52, height: 52, borderRadius: 26,
+              background: m.color, color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: m.avatar ? 28 : 18, fontWeight: 700, flexShrink: 0,
+            }}>{m.avatar || m.initials}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 17, fontWeight: 700, color: T.ink }}>{m.name}</div>
+              <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{m.role}</div>
+            </div>
+            <ChevronRight />
+          </button>
+        ))}
+
+        <button onClick={onAddMember} style={{
+          display: 'flex', alignItems: 'center', gap: 16,
+          background: 'transparent', border: '1.5px dashed ' + T.border,
+          borderRadius: 20, padding: '16px 20px',
+          cursor: 'pointer', color: T.muted, width: '100%',
+          fontFamily: 'inherit',
+        }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: 26,
+            border: '1.5px dashed ' + T.border,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 24, flexShrink: 0,
+          }}>+</div>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>Agregar perfil</div>
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ═══════════════════════════════════════════════════════════
 // DASHBOARD
@@ -479,7 +542,7 @@ const secondaryBtn = {
 // ═══════════════════════════════════════════════════════════
 // FAMILIA
 // ═══════════════════════════════════════════════════════════
-function FamiliaScreen({ user, activeMember, transactions }) {
+function FamiliaScreen({ user, activeMember, transactions, members, onAddMember, onSwitchProfile }) {
   const contribByMember = {};
   (transactions || []).forEach(t => {
     contribByMember[t.who] ||= { in: 0, out: 0, sav: 0 };
@@ -487,7 +550,8 @@ function FamiliaScreen({ user, activeMember, transactions }) {
     else if (t.kind === 'gasto') contribByMember[t.who].out += t.amount;
     else contribByMember[t.who].sav += t.amount;
   });
-  const me = activeMember || APP_DATA.members[0];
+  const allMembers = members && members.length > 0 ? members : APP_DATA.members;
+  const me = activeMember || allMembers[0];
 
   return (
     <div style={{ padding: '0 18px 120px', display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -544,16 +608,21 @@ function FamiliaScreen({ user, activeMember, transactions }) {
         </div>
       </Card>
 
-      <Section title="Miembros" action="+ Invitar">
+      <Section title="Miembros">
         <Card pad={0}>
-          {APP_DATA.members.filter(m => m.id !== me.id).map((m, i, arr) => {
+          {allMembers.filter(m => m.id !== me.id).map((m, i, arr) => {
             const c = contribByMember[m.name] || { in: 0, out: 0, sav: 0 };
             return (
               <div key={m.id} style={{
                 display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
                 borderBottom: i < arr.length - 1 ? '1px solid ' + T.border : 'none',
               }}>
-                <Avatar member={m.id} size={42} />
+                <div style={{
+                  width: 42, height: 42, borderRadius: 21,
+                  background: m.color, color: '#fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: m.avatar ? 22 : 15, fontWeight: 700, flexShrink: 0,
+                }}>{m.avatar || m.initials}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 700, color: T.ink }}>{m.name}</div>
                   <div style={{ fontSize: 11.5, color: T.muted, marginTop: 2 }}>{m.role}</div>
@@ -565,9 +634,10 @@ function FamiliaScreen({ user, activeMember, transactions }) {
               </div>
             );
           })}
-          <div style={{
+          <button onClick={onAddMember} style={{
             display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
-            background: T.soft, cursor: 'pointer',
+            background: T.soft, cursor: 'pointer', border: 'none',
+            width: '100%', fontFamily: 'inherit', textAlign: 'left',
           }}>
             <div style={{
               width: 42, height: 42, borderRadius: 21,
@@ -575,13 +645,24 @@ function FamiliaScreen({ user, activeMember, transactions }) {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 22, fontWeight: 300, color: T.muted,
             }}>+</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>Invitar a la familia</div>
-              <div style={{ fontSize: 11.5, color: T.muted, marginTop: 1 }}>Código: <b>RAMIREZ-2026</b> · expira en 7 días</div>
-            </div>
-            <div style={{ color: T.blue, fontSize: 12, fontWeight: 700 }}>Compartir →</div>
-          </div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>Agregar miembro</div>
+          </button>
         </Card>
+      </Section>
+
+      <Section title="Sesión">
+        <button onClick={onSwitchProfile} style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+          background: T.card, border: '1px solid ' + T.border, borderRadius: 16,
+          padding: '14px 16px', cursor: 'pointer', fontFamily: 'inherit',
+        }}>
+          <div style={{ fontSize: 20 }}>🔄</div>
+          <div style={{ flex: 1, textAlign: 'left' }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>Cambiar perfil</div>
+            <div style={{ fontSize: 11.5, color: T.muted, marginTop: 1 }}>Sesión actual: {me.name}</div>
+          </div>
+          <ChevronRight />
+        </button>
       </Section>
 
       <Section title="Gastos compartidos">
@@ -833,5 +914,5 @@ function AddSheet({ open, onClose, defaultKind = 'gasto', onSave, openScan, pref
 }
 
 Object.assign(window, {
-  DashboardScreen, MovimientosScreen, AhorrosScreen, FamiliaScreen, AddSheet,
+  ProfileSelector, DashboardScreen, MovimientosScreen, AhorrosScreen, FamiliaScreen, AddSheet,
 });

@@ -324,6 +324,111 @@ function Field({ label, children }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════
+// MEMBER CREATOR
+// ═══════════════════════════════════════════════════════════
+const MEMBER_AVATARS = ['👤','👨','👩','🧑','👦','👧','👴','👵','🧔','👱','🤵','👸','🦸','🧑‍💻','🧑‍🎨','🧒'];
+
+function MemberCreator({ open, onClose, onCreate }) {
+  const [name, setName]     = React.useState('');
+  const [avatar, setAvatar] = React.useState('👤');
+  const [color, setColor]   = React.useState('#3B5BDB');
+  const [role, setRole]     = React.useState('Miembro');
+
+  React.useEffect(() => {
+    if (open) { setName(''); setAvatar('👤'); setColor('#3B5BDB'); setRole('Miembro'); }
+  }, [open]);
+
+  if (!open) return null;
+  const canSave = name.trim().length > 0;
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 90,
+      background: 'rgba(20,18,15,0.55)',
+      display: 'flex', alignItems: 'flex-end',
+      animation: 'fadeIn 200ms',
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: T.bg, width: '100%',
+        borderRadius: '28px 28px 0 0',
+        padding: '8px 18px 36px',
+        maxHeight: '88%', overflowY: 'auto',
+        animation: 'slideUp 280ms cubic-bezier(.2,.7,.3,1)',
+        boxShadow: '0 -20px 40px rgba(0,0,0,0.15)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0 14px' }}>
+          <div style={{ width: 38, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.18)' }}/>
+        </div>
+
+        {/* Preview */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: 32,
+            background: color, color: '#fff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 32, flexShrink: 0,
+          }}>{avatar}</div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: 0.5, textTransform: 'uppercase' }}>Nuevo perfil</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: T.ink, marginTop: 2 }}>{name || 'Sin nombre'}</div>
+            <div style={{ fontSize: 12, color: T.muted, marginTop: 1 }}>{role}</div>
+          </div>
+        </div>
+
+        <Field label="Nombre">
+          <input autoFocus value={name} onChange={e => setName(e.target.value)}
+            placeholder="Ej. Carla, Diego…" style={inputStyle} />
+        </Field>
+
+        <Field label="Rol">
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {['Admin', 'Pareja', 'Hijo', 'Hija', 'Miembro'].map(r => (
+              <button key={r} onClick={() => setRole(r)} style={{
+                padding: '8px 14px', borderRadius: 999,
+                border: '1.5px solid ' + (role === r ? T.ink : T.border),
+                background: role === r ? T.ink : '#fff',
+                color: role === r ? '#fff' : T.ink2,
+                fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+              }}>{r}</button>
+            ))}
+          </div>
+        </Field>
+
+        <Field label="Avatar">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 6 }}>
+            {MEMBER_AVATARS.map(e => (
+              <button key={e} onClick={() => setAvatar(e)} style={{
+                aspectRatio: '1', border: 'none', borderRadius: 10,
+                background: avatar === e ? color + '22' : 'transparent',
+                boxShadow: avatar === e ? '0 0 0 2px ' + color : 'none',
+                cursor: 'pointer', fontSize: 22,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>{e}</button>
+            ))}
+          </div>
+        </Field>
+
+        <Field label="Color">
+          <ColorPicker color={color} setColor={setColor} />
+        </Field>
+
+        <button disabled={!canSave} onClick={() => {
+          onCreate({ id: 'u_' + Date.now(), name: name.trim(), avatar, color, role, initials: name.trim().slice(0, 2).toUpperCase() });
+          onClose();
+        }} style={{
+          width: '100%', border: 'none',
+          cursor: canSave ? 'pointer' : 'not-allowed',
+          background: canSave ? T.ink : T.soft,
+          color: canSave ? '#fff' : T.muted,
+          padding: '16px', borderRadius: 16, fontSize: 15, fontWeight: 700,
+          fontFamily: 'inherit', marginTop: 8,
+        }}>Crear perfil</button>
+      </div>
+    </div>
+  );
+}
+
 const inputStyle = {
   width: '100%', boxSizing: 'border-box',
   padding: '12px 14px', borderRadius: 12,
@@ -333,5 +438,5 @@ const inputStyle = {
 };
 
 Object.assign(window, {
-  IconPicker, ColorPicker, CategoryCreator, AccountCreator, ICON_LIBRARY, COLOR_LIBRARY,
+  IconPicker, ColorPicker, CategoryCreator, AccountCreator, MemberCreator, ICON_LIBRARY, COLOR_LIBRARY,
 });

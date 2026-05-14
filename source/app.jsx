@@ -13,7 +13,7 @@ function saveLS(key, val) {
 
 // ── Compute month totals from transactions (current month only) ──
 function calcMonthTotals(txs) {
-  const ym = new Date().toISOString().slice(0, 7); // "2026-05"
+  const ym = new Date().toISOString().slice(0, 7);
   return txs
     .filter(t => t.date && t.date.startsWith(ym))
     .reduce((acc, t) => {
@@ -35,25 +35,35 @@ function getDayLabel(dateStr) {
 
 function getCurrentMonthLabel() {
   const d = new Date();
-  const month = d.toLocaleString('es-MX', { month: 'long' });
-  return month.charAt(0).toUpperCase() + month.slice(1) + ' ' + d.getFullYear();
+  const m = d.toLocaleString('es-MX', { month: 'long' });
+  return m.charAt(0).toUpperCase() + m.slice(1) + ' ' + d.getFullYear();
 }
 
 // ── App ───────────────────────────────────────────────────────
 function App() {
-  const [tab, setTab]             = React.useState('inicio');
-  const [addOpen, setAddOpen]     = React.useState(false);
-  const [addKind, setAddKind]     = React.useState('gasto');
+  // ── Members & active profile ───────────────────────────────
+  const [members, setMembers]             = React.useState(() => loadLS('members', []));
+  const [activeProfileId, setActiveProfileId] = React.useState(() => loadLS('activeProfile', null));
+  const [memberCreatorOpen, setMemberCreatorOpen] = React.useState(false);
+
+  React.useEffect(() => { saveLS('members', members); }, [members]);
+  React.useEffect(() => { saveLS('activeProfile', activeProfileId); }, [activeProfileId]);
+
+  const activeMember = members.find(m => m.id === activeProfileId) || members[0] || null;
+
+  // ── App state ──────────────────────────────────────────────
+  const [tab, setTab]               = React.useState('inicio');
+  const [addOpen, setAddOpen]       = React.useState(false);
+  const [addKind, setAddKind]       = React.useState('gasto');
   const [addPrefill, setAddPrefill] = React.useState(null);
-  const [accountsOpen, setAccountsOpen]   = React.useState(false);
-  const [remindersOpen, setRemindersOpen] = React.useState(false);
-  const [assistantOpen, setAssistantOpen] = React.useState(false);
+  const [accountsOpen, setAccountsOpen]     = React.useState(false);
+  const [remindersOpen, setRemindersOpen]   = React.useState(false);
+  const [assistantOpen, setAssistantOpen]   = React.useState(false);
   const [catCreatorOpen, setCatCreatorOpen] = React.useState(false);
   const [catCreatorKind, setCatCreatorKind] = React.useState('gasto');
   const [accCreatorOpen, setAccCreatorOpen] = React.useState(false);
   const [toast, setToast] = React.useState(null);
 
-  // Persistent state — loaded from localStorage on first render
   const [accounts, setAccounts] = React.useState(() => loadLS('accounts', []));
   const [goals, setGoals]       = React.useState(() => loadLS('goals', []));
   const [txs, setTxs]           = React.useState(() => loadLS('transactions', []));
@@ -69,14 +79,12 @@ function App() {
     return srcs;
   });
 
-  // Persist on change
   React.useEffect(() => { saveLS('transactions', txs); }, [txs]);
   React.useEffect(() => { saveLS('accounts', accounts); }, [accounts]);
   React.useEffect(() => { saveLS('goals', goals); }, [goals]);
   React.useEffect(() => { saveLS('customCats', customCats); }, [customCats]);
   React.useEffect(() => { saveLS('customSources', customSources); }, [customSources]);
 
-  // Derived month totals
   const month = React.useMemo(() => ({
     ...calcMonthTotals(txs),
     label: getCurrentMonthLabel(),
@@ -87,12 +95,16 @@ function App() {
     setToast({ msg, color });
     setTimeout(() => setToast(null), 2400);
   };
-
-  const openAdd = (kind = 'gasto') => {
-    setAddKind(kind); setAddPrefill(null); setAddOpen(true);
-  };
+  const openAdd = (kind = 'gasto') => { setAddKind(kind); setAddPrefill(null); setAddOpen(true); };
 
   // ── Handlers ───────────────────────────────────────────────
+  const onMemberCreated = (m) => {
+    setMembers(prev => [...prev, m]);
+    // auto-select if first member
+    if (members.length === 0) setActiveProfileId(m.id);
+    showToast('👤 Perfil "' + m.name + '" creado', m.color);
+  };
+
   const onCategoryCreated = (c) => {
     if (c.kind === 'ingreso') {
       APP_DATA.incomeSources[c.id] = { name: c.name, icon: c.icon, color: c.color };
@@ -129,13 +141,10 @@ function App() {
       who: data.member,
       amount: data.amount,
     };
-
     setTxs(prev => [newTx, ...prev]);
-
     if (data.kind === 'ahorro') {
       setGoals(gs => gs.map(g => g.id === data.cat ? { ...g, saved: g.saved + data.amount } : g));
     }
-
     setAddOpen(false);
     showToast(
       data.kind === 'ingreso' ? '+ ' + fmt(data.amount) + ' ingreso registrado'
@@ -150,7 +159,25 @@ function App() {
     showToast('Movimiento eliminado', T.muted);
   };
 
-  const activeMember = APP_DATA.members[0];
+  // ── Profile selector ───────────────────────────────────────
+  // Show selector when no active profile (first launch or switch requested)
+  if (!activeMember) {
+    return (
+      <>
+        <ProfileSelector
+          members={members}
+          onSelect={(id) => setActiveProfileId(id)}
+          onAddMember={() => setMemberCreatorOpen(true)}
+        />
+        <MemberCreator
+          open={memberCreatorOpen}
+          onClose={() => setMemberCreatorOpen(false)}
+          onCreate={onMemberCreated}
+        />
+      </>
+    );
+  }
+
   window.__activeUser = activeMember;
 
   // ── Screen routing ─────────────────────────────────────────
@@ -178,6 +205,9 @@ function App() {
       user={{ name: activeMember.name }}
       activeMember={activeMember}
       transactions={txs}
+      members={members}
+      onAddMember={() => setMemberCreatorOpen(true)}
+      onSwitchProfile={() => setActiveProfileId(null)}
     />;
 
   return (
@@ -189,7 +219,6 @@ function App() {
     }}>
       {screen}
 
-      {/* Toast */}
       {toast && (
         <div style={{
           position: 'fixed', top: 16, left: 16, right: 16, zIndex: 80,
@@ -223,6 +252,7 @@ function App() {
 
       <CategoryCreator open={catCreatorOpen} onClose={() => setCatCreatorOpen(false)} kind={catCreatorKind} onCreate={onCategoryCreated} />
       <AccountCreator  open={accCreatorOpen} onClose={() => setAccCreatorOpen(false)} onCreate={onAccountCreated} />
+      <MemberCreator   open={memberCreatorOpen} onClose={() => setMemberCreatorOpen(false)} onCreate={onMemberCreated} />
     </div>
   );
 }
