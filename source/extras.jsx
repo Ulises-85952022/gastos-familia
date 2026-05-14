@@ -1,0 +1,624 @@
+// Extras — Cuentas, Escaneo de tickets, Recordatorios, Asistente IA
+
+// ═══════════════════════════════════════════════════════════
+// ACCOUNTS — Card carousel + full modal
+// ═══════════════════════════════════════════════════════════
+function AccountsStrip({ onOpen, accounts }) {
+  const accs = accounts || APP_DATA.accounts;
+  const totalLiquid = accs.filter(a => a.type !== 'Crédito' && a.type !== 'Inversión').reduce((s, a) => s + a.balance, 0);
+  const totalCredit = accs.filter(a => a.type === 'Crédito').reduce((s, a) => s + a.balance, 0);
+
+  return (
+    <Section title="Tus cuentas" action="Ver todas" >
+      <div style={{ display: 'flex', gap: 12, overflowX: 'auto', margin: '0 -18px', padding: '0 18px 4px', scrollbarWidth: 'none' }}>
+        {accs.map(a => <MiniAccountCard key={a.id} a={a} onClick={() => onOpen(a.id)} />)}
+        <button onClick={() => onOpen('new')} style={{
+          flex: '0 0 78px', height: 110, borderRadius: 18,
+          border: '1.5px dashed ' + T.border, background: 'transparent',
+          color: T.muted, cursor: 'pointer', fontFamily: 'inherit',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+        }}>
+          <div style={{ fontSize: 24, fontWeight: 300 }}>+</div>
+          <div style={{ fontSize: 10.5, fontWeight: 600 }}>Vincular</div>
+        </button>
+      </div>
+    </Section>
+  );
+}
+
+function MiniAccountCard({ a, onClick }) {
+  const isCredit = a.type === 'Crédito';
+  const pctUsed = isCredit ? Math.min(100, Math.abs(a.balance) / a.limit * 100) : 0;
+  return (
+    <button onClick={onClick} style={{
+      flex: '0 0 180px', height: 110, borderRadius: 18, padding: 14,
+      border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+      textAlign: 'left', color: '#fff',
+      background: `linear-gradient(135deg, ${a.color} 0%, ${shade(a.color, -20)} 100%)`,
+      boxShadow: '0 8px 20px ' + a.color + '40',
+      display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+      position: 'relative', overflow: 'hidden',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{
+          width: 26, height: 26, borderRadius: 6, background: 'rgba(255,255,255,0.22)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontWeight: 800, fontSize: 13,
+        }}>{a.logo}</div>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.5, opacity: 0.8 }}>{a.type.toUpperCase()}</div>
+      </div>
+      <div>
+        <div style={{ fontSize: 10.5, fontWeight: 600, opacity: 0.75, marginBottom: 2 }}>{a.name} {a.mask}</div>
+        <div style={{ fontFamily: 'inherit', fontWeight: 500, fontSize: 22, lineHeight: 1, letterSpacing: -0.3 }}>
+          {fmt(Math.abs(a.balance))}
+        </div>
+        {isCredit && (
+          <div style={{ marginTop: 4, height: 3, background: 'rgba(255,255,255,0.22)', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{ width: pctUsed + '%', height: '100%', background: '#fff' }} />
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function shade(hex, amt) {
+  const h = hex.replace('#','');
+  const num = parseInt(h, 16);
+  let r = (num >> 16) + amt;
+  let g = ((num >> 8) & 0xff) + amt;
+  let b = (num & 0xff) + amt;
+  r = Math.max(0, Math.min(255, r));
+  g = Math.max(0, Math.min(255, g));
+  b = Math.max(0, Math.min(255, b));
+  return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+}
+
+// Full-screen Accounts modal
+function AccountsModal({ open, onClose, accounts, onCreate }) {
+  if (!open) return null;
+  const accs = accounts || APP_DATA.accounts;
+  const patrimonio = accs.reduce((s, a) => s + a.balance, 0);
+
+  return (
+    <FullSheet onClose={onClose} title="Cuentas">
+      <Card pad={20} style={{
+        background: 'linear-gradient(150deg, #1A1815 0%, #2A2521 70%, #3A332B 100%)',
+        color: '#fff', border: 'none', marginBottom: 18,
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>Patrimonio total</div>
+        <div style={{ fontFamily: 'inherit', fontWeight: 500, fontSize: 44, lineHeight: 1, marginTop: 4, letterSpacing: -1 }}>{fmt(patrimonio)}</div>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 6 }}>{accs.length} cuentas vinculadas · Actualizado ahora</div>
+      </Card>
+
+      <Section title="Activos" gap={10}>
+        {accs.filter(a => a.balance >= 0).map(a => <AccountRow key={a.id} a={a} />)}
+      </Section>
+
+      <div style={{ height: 14 }} />
+
+      <Section title="Pasivos" gap={10}>
+        {accs.filter(a => a.balance < 0).map(a => <AccountRow key={a.id} a={a} />)}
+      </Section>
+
+      <button onClick={onCreate} style={{
+        marginTop: 18, width: '100%',
+        border: '1.5px dashed ' + T.border, background: 'transparent',
+        padding: '16px', borderRadius: 16, fontSize: 14, fontWeight: 700,
+        color: T.ink2, cursor: 'pointer', fontFamily: 'inherit',
+      }}>+ Vincular nueva cuenta</button>
+    </FullSheet>
+  );
+}
+
+function AccountRow({ a }) {
+  const isCredit = a.type === 'Crédito';
+  const pctUsed = isCredit ? Math.min(100, Math.abs(a.balance) / a.limit * 100) : 0;
+  return (
+    <Card pad={14} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{
+        width: 44, height: 44, borderRadius: 12,
+        background: a.color, color: '#fff', fontWeight: 800, fontSize: 16,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>{a.logo}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 700, color: T.ink }}>{a.name}</div>
+        <div style={{ fontSize: 11.5, color: T.muted, marginTop: 1 }}>{a.type} {a.mask}</div>
+        {isCredit && (
+          <div style={{ marginTop: 6 }}>
+            <div style={{ height: 4, background: T.soft, borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ width: pctUsed + '%', height: '100%', background: a.color }} />
+            </div>
+            <div style={{ fontSize: 10.5, color: T.muted, marginTop: 3 }}>{Math.round(pctUsed)}% de {fmt(a.limit, { abbr: true })} usado</div>
+          </div>
+        )}
+      </div>
+      <div style={{ textAlign: 'right' }}>
+        <div style={{
+          fontSize: 15, fontWeight: 700,
+          color: a.balance < 0 ? T.red : T.ink,
+          letterSpacing: -0.2,
+        }}>{a.balance < 0 ? '−' : ''}{fmt(Math.abs(a.balance))}</div>
+      </div>
+    </Card>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// SHARED — Full-screen sheet
+// ═══════════════════════════════════════════════════════════
+function FullSheet({ children, title, onClose, accent = T.ink }) {
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, zIndex: 75,
+      background: T.bg, display: 'flex', flexDirection: 'column',
+      animation: 'slideUp 280ms cubic-bezier(.2,.7,.3,1)',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '56px 16px 12px', position: 'sticky', top: 0,
+        background: T.bg, zIndex: 2,
+      }}>
+        <button onClick={onClose} style={{
+          width: 36, height: 36, borderRadius: 18,
+          background: T.card, border: '1px solid ' + T.border,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: T.ink, cursor: 'pointer',
+        }}><ChevronLeft/></button>
+        <div style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>{title}</div>
+        <div style={{ width: 36 }} />
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 18px 40px' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// SCAN RECEIPT
+// ═══════════════════════════════════════════════════════════
+function ScanModal({ open, onClose, onResult }) {
+  const [phase, setPhase] = React.useState('aim'); // aim → scanning → result
+  const [scanProgress, setScanProgress] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!open) { setPhase('aim'); setScanProgress(0); return; }
+  }, [open]);
+
+  React.useEffect(() => {
+    if (phase !== 'scanning') return;
+    let p = 0;
+    const id = setInterval(() => {
+      p += 5 + Math.random() * 7;
+      if (p >= 100) { p = 100; setScanProgress(100); clearInterval(id); setTimeout(() => setPhase('result'), 350); }
+      else setScanProgress(p);
+    }, 90);
+    return () => clearInterval(id);
+  }, [phase]);
+
+  if (!open) return null;
+
+  // Mocked extraction
+  const extracted = {
+    merchant: 'OXXO Polanco',
+    date: 'Hoy, 14 may',
+    total: 287,
+    items: [
+      { name: 'Coca-cola 600ml',  price: 22 },
+      { name: 'Sabritas adobadas', price: 26 },
+      { name: 'Gansito x2',        price: 36 },
+      { name: 'Recarga celular',   price: 100 },
+      { name: 'Pan dulce surtido', price: 78 },
+      { name: 'IVA 16%',           price: 25 },
+    ],
+    category: 'supermercado',
+  };
+
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, zIndex: 78,
+      background: '#000', display: 'flex', flexDirection: 'column',
+      color: '#fff',
+      animation: 'fadeIn 200ms',
+    }}>
+      {/* Top bar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '56px 18px 14px',
+      }}>
+        <button onClick={onClose} style={{
+          width: 36, height: 36, borderRadius: 18,
+          background: 'rgba(255,255,255,0.18)', border: 'none', color: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+        }}>✕</button>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>
+          {phase === 'aim' ? 'Escanear ticket' : phase === 'scanning' ? 'Analizando…' : 'Detectado'}
+        </div>
+        <div style={{ width: 36, fontSize: 18, opacity: 0.6, textAlign: 'right' }}>⚡</div>
+      </div>
+
+      {phase !== 'result' ? (
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden', padding: '0 32px' }}>
+          {/* Fake receipt preview */}
+          <div style={{
+            position: 'absolute', inset: '0 32px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <div style={{
+              width: '100%', maxWidth: 240,
+              background: '#fefdf7', color: '#000',
+              padding: '20px 18px', borderRadius: 4,
+              boxShadow: '0 30px 60px rgba(0,0,0,0.5)',
+              fontFamily: '"Courier New", monospace', fontSize: 9.5, lineHeight: 1.4,
+              transform: phase === 'scanning' ? 'rotate(-2deg) scale(1.02)' : 'rotate(-3deg)',
+              transition: 'transform 600ms',
+            }}>
+              <div style={{ textAlign: 'center', fontWeight: 700, fontSize: 11, marginBottom: 6 }}>OXXO POLANCO</div>
+              <div style={{ textAlign: 'center', marginBottom: 10, opacity: 0.7 }}>Av. Presidente Masaryk 123</div>
+              <div style={{ borderTop: '1px dashed #888', paddingTop: 6 }}>
+                {extracted.items.slice(0, 5).map((it, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>{it.name}</span><span>${it.price}</span>
+                  </div>
+                ))}
+                <div style={{ borderTop: '1px dashed #888', marginTop: 6, paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                  <span>TOTAL</span><span>${extracted.total}</span>
+                </div>
+              </div>
+              <div style={{ textAlign: 'center', marginTop: 10, opacity: 0.6 }}>* Gracias por su compra *</div>
+            </div>
+          </div>
+
+          {/* Corner brackets */}
+          {phase === 'aim' && [
+            { top: 90,   left: 18,  rot: 0   },
+            { top: 90,   right: 18, rot: 90  },
+            { bottom: 200, left: 18,  rot: -90 },
+            { bottom: 200, right: 18, rot: 180 },
+          ].map((c, i) => (
+            <div key={i} style={{ position: 'absolute', ...c, width: 28, height: 28, borderTop: '3px solid #fff', borderLeft: '3px solid #fff', transform: `rotate(${c.rot}deg)`, borderRadius: 4 }} />
+          ))}
+
+          {/* Scanning laser */}
+          {phase === 'scanning' && (
+            <div style={{
+              position: 'absolute', left: 32, right: 32,
+              top: `${15 + (scanProgress * 0.55)}%`,
+              height: 2, background: 'linear-gradient(90deg, transparent, #5DCC7A, transparent)',
+              boxShadow: '0 0 20px #5DCC7A, 0 0 40px #5DCC7A',
+              transition: 'top 90ms linear',
+            }}/>
+          )}
+
+          {/* Bottom shutter */}
+          <div style={{
+            position: 'absolute', left: 0, right: 0, bottom: 0,
+            padding: '0 0 90px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
+          }}>
+            {phase === 'aim' && (
+              <>
+                <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.7)', textAlign: 'center', maxWidth: 240 }}>
+                  Encuadra el ticket dentro de los marcadores. La IA extraerá monto, fecha y categoría.
+                </div>
+                <button onClick={() => setPhase('scanning')} style={{
+                  width: 68, height: 68, borderRadius: 34,
+                  background: '#fff', border: '4px solid rgba(255,255,255,0.3)',
+                  cursor: 'pointer', boxShadow: '0 0 0 2px #fff inset',
+                }}/>
+                <div style={{ display: 'flex', gap: 20, opacity: 0.8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600 }}>📁 Galería</div>
+                  <div style={{ fontSize: 11, fontWeight: 600 }}>⚡ Flash</div>
+                </div>
+              </>
+            )}
+            {phase === 'scanning' && (
+              <>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>Leyendo {Math.round(scanProgress)}%</div>
+                <div style={{ width: 180, height: 4, background: 'rgba(255,255,255,0.2)', borderRadius: 2, overflow: 'hidden' }}>
+                  <div style={{ width: scanProgress + '%', height: '100%', background: '#5DCC7A', transition: 'width 90ms linear' }}/>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div style={{ flex: 1, background: T.bg, color: T.ink, padding: 18, animation: 'fadeIn 240ms', overflowY: 'auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: 14 }}>
+            <div style={{ fontSize: 32, marginBottom: 4 }}>✨</div>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: T.green }}>Detectado con éxito</div>
+          </div>
+          <Card pad={18}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <CatIcon cat="supermercado" size={44} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>{extracted.merchant}</div>
+                <div style={{ fontSize: 12, color: T.muted, marginTop: 1 }}>{extracted.date} · {extracted.items.length} líneas</div>
+              </div>
+              <div style={{ fontFamily: 'inherit', fontWeight: 500, fontSize: 28, color: T.red, lineHeight: 1 }}>−{fmt(extracted.total)}</div>
+            </div>
+            <div style={{ background: T.soft, borderRadius: 12, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 200, overflowY: 'auto' }}>
+              {extracted.items.map((it, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+                  <span style={{ color: T.ink2 }}>{it.name}</span>
+                  <span style={{ fontWeight: 600, color: T.ink }}>${it.price}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.gold, background: T.goldSoft, padding: '6px 10px', borderRadius: 999 }}>🛒 Supermercado</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.blue, background: T.blueSoft, padding: '6px 10px', borderRadius: 999 }}>💳 BBVA Débito</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, background: T.soft, padding: '6px 10px', borderRadius: 999 }}>👤 Ulises</div>
+            </div>
+          </Card>
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <button onClick={onClose} style={{
+              flex: 1, background: '#fff', color: T.ink, border: '1px solid ' + T.border,
+              padding: '14px', borderRadius: 14, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
+            }}>Editar</button>
+            <button onClick={() => { onResult(extracted); onClose(); }} style={{
+              flex: 1, background: T.green, color: '#fff', border: 'none',
+              padding: '14px', borderRadius: 14, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
+            }}>Guardar gasto</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// REMINDERS
+// ═══════════════════════════════════════════════════════════
+function RemindersModal({ open, onClose }) {
+  const [rems, setRems] = React.useState(APP_DATA.reminders);
+  const [pushAll, setPushAll]   = React.useState(true);
+  const [emailAll, setEmailAll] = React.useState(false);
+  const [whatsapp, setWhatsapp] = React.useState(false);
+  const [days, setDays] = React.useState(2);
+
+  if (!open) return null;
+
+  return (
+    <FullSheet onClose={onClose} title="Recordatorios">
+      <Card pad={18} style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 4 }}>Canales</div>
+        <div style={{ fontSize: 12, color: T.muted, marginBottom: 14 }}>Cómo te avisamos antes de un pago</div>
+        <SwitchRow icon="🔔" label="Notificación push" value={pushAll} onChange={setPushAll} />
+        <SwitchRow icon="✉️" label="Email a ulises@…" value={emailAll} onChange={setEmailAll} />
+        <SwitchRow icon="💬" label="WhatsApp" value={whatsapp} onChange={setWhatsapp} last />
+      </Card>
+
+      <Card pad={18} style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 10 }}>Avisarme con anticipación</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[0, 1, 2, 3, 5, 7].map(d => (
+            <button key={d} onClick={() => setDays(d)} style={{
+              flex: 1, padding: '10px 4px', borderRadius: 12,
+              border: '1.5px solid ' + (days === d ? T.ink : T.border),
+              background: days === d ? T.ink : '#fff',
+              color: days === d ? '#fff' : T.ink2,
+              fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit',
+            }}>{d === 0 ? 'Mismo día' : d + 'd'}</button>
+          ))}
+        </div>
+      </Card>
+
+      <Section title="Próximos recordatorios">
+        {rems.map(r => (
+          <Card key={r.id} pad={14} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+            <div style={{
+              width: 42, height: 42, borderRadius: 12, background: T.soft,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
+            }}>{r.icon}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ fontSize: 14.5, fontWeight: 700, color: T.ink }}>{r.name}</div>
+                {r.status === 'urgent' && (
+                  <div style={{ fontSize: 9.5, fontWeight: 800, color: T.red, background: T.redSoft, padding: '2px 6px', borderRadius: 4, letterSpacing: 0.4 }}>HOY</div>
+                )}
+              </div>
+              <div style={{ fontSize: 11.5, color: T.muted, marginTop: 2 }}>{r.when} · {r.channel}</div>
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.ink, letterSpacing: -0.2 }}>{fmt(r.amount)}</div>
+          </Card>
+        ))}
+      </Section>
+    </FullSheet>
+  );
+}
+
+function SwitchRow({ icon, label, value, onChange, last }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '10px 0', borderBottom: last ? 'none' : '1px solid ' + T.border,
+    }}>
+      <div style={{ fontSize: 18 }}>{icon}</div>
+      <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: T.ink }}>{label}</div>
+      <button onClick={() => onChange(!value)} style={{
+        width: 46, height: 28, borderRadius: 14,
+        background: value ? T.green : T.soft,
+        border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 200ms',
+      }}>
+        <div style={{
+          position: 'absolute', top: 2, left: value ? 20 : 2,
+          width: 24, height: 24, borderRadius: 12, background: '#fff',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)', transition: 'left 200ms',
+        }}/>
+      </button>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// AI ASSISTANT
+// ═══════════════════════════════════════════════════════════
+function AssistantModal({ open, onClose }) {
+  const [messages, setMessages] = React.useState([
+    { role: 'assistant', content: 'Hola Ulises 👋 Soy tu asistente financiero. Puedo analizar tus gastos, sugerir recortes o ayudarte a planear ahorros. ¿En qué pensamos hoy?' },
+  ]);
+  const [input, setInput] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const scrollRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages, loading]);
+
+  if (!open) return null;
+
+  const buildPrompt = (userMsg) => {
+    const m = APP_DATA.month;
+    const context = `Eres un asistente financiero amigable y directo para Ulises y su familia. Responde SIEMPRE en español, breve (máx 4 frases) y con un tono cálido pero útil. Si conviene, usa viñetas con guion.
+    
+Contexto del mes (Mayo 2026, pesos mexicanos MXN):
+- Ingresos: $${m.income}
+- Gastos: $${m.expenses}
+- Ahorrado: $${m.savings}
+- Disponible: $${m.income - m.expenses - m.savings}
+- Sobre presupuesto: Restaurantes (21% arriba de $3,000)
+- Metas activas: Vacaciones Cancún ($14,200 de $35,000), Fondo de emergencia ($48,000 de $60,000), Auto nuevo ($22,500 de $180,000)
+- Familia: Ulises (admin), Carla (pareja), Diego (hijo), Lupita (hija)
+- Próximos pagos: Renta $12,000 (15 may), Netflix $219 (17 may), Internet $599 (18 may), CFE $1,280 (22 may)
+
+Conversación previa:
+${messages.slice(-6).map(m => (m.role === 'user' ? 'Ulises' : 'Tú') + ': ' + m.content).join('\n')}
+
+Ulises: ${userMsg}
+Tú:`;
+    return context;
+  };
+
+  const send = async (text) => {
+    const msg = (text || input).trim();
+    if (!msg || loading) return;
+    setMessages(ms => [...ms, { role: 'user', content: msg }]);
+    setInput('');
+    setLoading(true);
+    try {
+      if (!(window.claude && window.claude.complete)) {
+        throw new Error('no-claude');
+      }
+      const reply = await window.claude.complete(buildPrompt(msg));
+      setMessages(ms => [...ms, { role: 'assistant', content: reply.trim() }]);
+    } catch (e) {
+      const fallback = e.message === 'no-claude'
+        ? 'Estás viendo una versión publicada. Para que Penny conteste con IA real necesitas conectar una API (Claude, OpenAI, etc.). Por ahora soy un asistente de demo. 🤖'
+        : 'Uy, no pude responder ahora. Intenta de nuevo en un momento.';
+      setMessages(ms => [...ms, { role: 'assistant', content: fallback }]);
+    }
+    setLoading(false);
+  };
+
+  const suggestions = [
+    '¿Dónde estoy gastando de más?',
+    '¿Cuánto más debo ahorrar para Cancún?',
+    'Dame un plan para reducir restaurantes',
+    'Resumen de mi mes',
+  ];
+
+  return (
+    <FullSheet onClose={onClose} title="Asistente IA">
+      <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 200px)', minHeight: 460 }}>
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: 14 }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: 28, margin: '0 auto 10px',
+            background: 'linear-gradient(135deg, #7048E8 0%, #3B5BDB 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 26, boxShadow: '0 10px 24px rgba(112,72,232,0.3)',
+          }}>✨</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>Tu asistente Penny</div>
+          <div style={{ fontSize: 11.5, color: T.muted, marginTop: 2 }}>Conoce tus gastos, metas y presupuestos</div>
+        </div>
+
+        {/* Messages */}
+        <div ref={scrollRef} style={{
+          flex: 1, overflowY: 'auto',
+          display: 'flex', flexDirection: 'column', gap: 10,
+          padding: '4px 0 8px',
+        }}>
+          {messages.map((m, i) => (
+            <div key={i} style={{
+              alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+              maxWidth: '82%',
+            }}>
+              <div style={{
+                background: m.role === 'user' ? T.ink : '#fff',
+                color: m.role === 'user' ? '#fff' : T.ink,
+                padding: '10px 14px',
+                borderRadius: m.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                fontSize: 13.5, lineHeight: 1.45,
+                border: m.role === 'user' ? 'none' : '1px solid ' + T.border,
+                whiteSpace: 'pre-wrap',
+              }}>{m.content}</div>
+            </div>
+          ))}
+          {loading && (
+            <div style={{ alignSelf: 'flex-start' }}>
+              <div style={{
+                background: '#fff', border: '1px solid ' + T.border,
+                padding: '12px 16px', borderRadius: '18px 18px 18px 4px',
+                display: 'flex', gap: 4,
+              }}>
+                {[0,1,2].map(i => (
+                  <div key={i} style={{
+                    width: 6, height: 6, borderRadius: 3, background: T.muted,
+                    animation: `pulse 1.2s ${i*0.15}s infinite ease-in-out`,
+                  }}/>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Suggestions */}
+        {messages.length <= 2 && !loading && (
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '8px 0', scrollbarWidth: 'none', margin: '0 -18px 0', paddingLeft: 18, paddingRight: 18 }}>
+            {suggestions.map(s => (
+              <button key={s} onClick={() => send(s)} style={{
+                flex: '0 0 auto', whiteSpace: 'nowrap',
+                background: '#fff', border: '1px solid ' + T.border,
+                padding: '8px 12px', borderRadius: 999,
+                fontSize: 12, fontWeight: 600, color: T.ink2,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}>{s}</button>
+            ))}
+          </div>
+        )}
+
+        {/* Input */}
+        <div style={{
+          display: 'flex', gap: 8, padding: '10px 0 0',
+          borderTop: '1px solid ' + T.border, marginTop: 8,
+        }}>
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && send()}
+            placeholder="Pregúntale a Penny…"
+            style={{
+              flex: 1, padding: '12px 14px', borderRadius: 999,
+              border: '1px solid ' + T.border, background: '#fff',
+              fontSize: 14, fontFamily: 'inherit', color: T.ink,
+              outline: 'none',
+            }}
+          />
+          <button onClick={() => send()} disabled={!input.trim() || loading} style={{
+            width: 44, height: 44, borderRadius: 22,
+            background: input.trim() && !loading ? T.ink : T.soft,
+            color: '#fff', border: 'none', cursor: input.trim() ? 'pointer' : 'not-allowed',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 18,
+          }}>↑</button>
+        </div>
+      </div>
+    </FullSheet>
+  );
+}
+
+Object.assign(window, {
+  AccountsStrip, AccountsModal, ScanModal, RemindersModal, AssistantModal, FullSheet,
+});
