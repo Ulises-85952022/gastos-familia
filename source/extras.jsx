@@ -176,14 +176,78 @@ function FullSheet({ children, title, onClose, accent = T.ink }) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// SCAN RECEIPT
+// SCAN RECEIPT — OCR helpers
 // ═══════════════════════════════════════════════════════════
+
+const CAT_PRIORITY = [
+  ['salud',           ['FARMACIA', 'BENAVIDES', 'AHORRO', 'GUADALAJARA', 'CRUZ VERDE', 'MEDICAMENTO', 'CLINICA', 'HOSPITAL', 'DR.', 'DRA.', 'LABORATORIO']],
+  ['servicios',       ['CFE ', 'TELMEX', 'IZZI', 'TELCEL', 'AT&T', 'MOVISTAR', 'TOTALPLAY', 'MEGACABLE', 'AGUA ', 'PREDIAL', 'CONAGUA']],
+  ['suscripciones',   ['NETFLIX', 'SPOTIFY', 'DISNEY', 'AMAZON', 'HBO', 'APPLE', 'YOUTUBE']],
+  ['entretenimiento', ['CINEPOLIS', 'CINEMEX', 'CINEMA', 'TEATRO ', 'CONCIERTO', 'TICKETMASTER', 'SPORTIUM', 'GYM', 'GIMNASIO']],
+  ['transporte',      ['UBER', 'DIDI', 'CABIFY', 'TAXI', 'METRO ', 'METROBUS', 'ADO', 'PRIMERA PLUS', 'ESTRELLA', 'PEMEX', 'SHELL', 'MAGNA', 'PREMIUM', 'LITROS', 'DIESEL']],
+  ['educacion',       ['ESCUELA', 'COLEGIO', 'UNIVERSIDAD', 'INSTITUTO', 'LIBRERIA', 'PAPELERIA', 'LIBRO']],
+  ['restaurantes',    ['RESTAURAN', 'TAQUERIA', 'TAQUER', 'PIZZA', 'BURGER', 'CARNITAS', 'TORTAS', 'SUSHI', 'MARISCOS', 'ANTOJITOS', 'COCINA', 'GRILL', 'CAFETERIA', 'CAFE ', 'CAFÉ', 'STARBUCKS', 'MCDONALDS', 'KFC', 'DOMINOS', 'SUBWAY', 'VIPS', 'SANBORNS']],
+  ['supermercado',    ['WALMART', 'SORIANA', 'CHEDRAUI', 'BODEGA', 'COSTCO', "SAM'S", 'HEB', 'LA COMER', 'SUPERAMA', 'CITY MARKET', 'FRESKO', 'MEGA', 'OXXO', '7-ELEVEN', 'SEVEN ELEVEN', 'CIRCLE K', 'KIOSKO', 'EXTRA ']],
+];
+
+function detectCategoryFromText(text) {
+  const upper = text.toUpperCase();
+  for (const [cat, keywords] of CAT_PRIORITY) {
+    if (keywords.some(kw => upper.includes(kw))) return cat;
+  }
+  return 'otros';
+}
+
+function extractTotal(text) {
+  const patterns = [
+    /TOTAL\s+A\s+PAGAR\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i,
+    /IMPORTE\s+TOTAL\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i,
+    /TOTAL\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i,
+    /IMPORTE\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i,
+    /A\s+PAGAR\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i,
+    /SUMA\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i,
+    /SUBTOTAL\s*:?\s*\$?\s*([\d,]+\.?\d{0,2})/i,
+  ];
+  for (const pat of patterns) {
+    const m = text.match(pat);
+    if (m) {
+      const n = parseFloat(m[1].replace(/,/g, ''));
+      if (n > 0) return n;
+    }
+  }
+  // Fallback: largest currency amount on the receipt
+  const amounts = [...text.matchAll(/\$\s*([\d,]{1,7}\.\d{2})/g)]
+    .map(m => parseFloat(m[1].replace(/,/g, '')))
+    .filter(n => n > 0 && n < 999999);
+  return amounts.length ? Math.max(...amounts) : 0;
+}
+
+function extractMerchant(lines) {
+  // Skip very short lines and lines that are only digits/symbols
+  const candidates = lines.filter(l => l.length >= 3 && /[A-Za-zÀ-ÿ]/.test(l));
+  return candidates[0] || 'Comercio';
+}
+
+function parseReceiptText(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const today = new Date();
+  return {
+    merchant:  extractMerchant(lines),
+    total:     extractTotal(text),
+    category:  detectCategoryFromText(text),
+    date:      'Hoy, ' + today.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }),
+    items:     [],
+  };
+}
+
 function ScanModal({ open, onClose, onResult }) {
   const [phase, setPhase] = React.useState('aim'); // aim → scanning → result
   const [scanProgress, setScanProgress] = React.useState(0);
   const [camError, setCamError] = React.useState(null); // null | 'denied' | 'unavailable'
   const [torchOn, setTorchOn] = React.useState(false);
   const [capturedImg, setCapturedImg] = React.useState(null);
+  const [extracted, setExtracted] = React.useState(null);
+  const [ocrStatus, setOcrStatus] = React.useState('');
   const videoRef = React.useRef(null);
   const streamRef = React.useRef(null);
   const canvasRef = React.useRef(null);
@@ -197,6 +261,8 @@ function ScanModal({ open, onClose, onResult }) {
       setCamError(null);
       setTorchOn(false);
       setCapturedImg(null);
+      setExtracted(null);
+      setOcrStatus('');
       return;
     }
     startCamera();
@@ -281,35 +347,72 @@ function ScanModal({ open, onClose, onResult }) {
     input.click();
   }
 
-  // Scanning progress animation
+  // OCR scanning
   React.useEffect(() => {
-    if (phase !== 'scanning') return;
-    let p = 0;
-    const id = setInterval(() => {
-      p += 5 + Math.random() * 7;
-      if (p >= 100) { p = 100; setScanProgress(100); clearInterval(id); setTimeout(() => setPhase('result'), 350); }
-      else setScanProgress(p);
-    }, 90);
-    return () => clearInterval(id);
-  }, [phase]);
+    if (phase !== 'scanning' || !capturedImg) return;
+
+    setScanProgress(0);
+    setOcrStatus('Iniciando…');
+
+    const FALLBACK = {
+      merchant: 'Comercio',
+      total: 0,
+      category: 'otros',
+      date: 'Hoy, ' + new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }),
+      items: [],
+    };
+
+    function finish(result) {
+      setExtracted(result);
+      setScanProgress(100);
+      setTimeout(() => setPhase('result'), 350);
+    }
+
+    if (typeof Tesseract === 'undefined') {
+      // Library not loaded — animate fake progress then show fallback
+      let p = 0;
+      const id = setInterval(() => {
+        p += 6 + Math.random() * 8;
+        if (p >= 100) { clearInterval(id); finish(FALLBACK); }
+        else setScanProgress(Math.min(p, 99));
+      }, 90);
+      return () => clearInterval(id);
+    }
+
+    Tesseract.recognize(capturedImg, 'spa', {
+      logger: m => {
+        if (m.status === 'loading tesseract core') {
+          setOcrStatus('Cargando motor…');
+          setScanProgress(Math.round(m.progress * 10));
+        } else if (m.status === 'initializing tesseract') {
+          setOcrStatus('Inicializando…');
+          setScanProgress(10 + Math.round(m.progress * 10));
+        } else if (m.status === 'loading language traineddata') {
+          setOcrStatus('Cargando idioma…');
+          setScanProgress(20 + Math.round(m.progress * 10));
+        } else if (m.status === 'initializing api') {
+          setOcrStatus('Preparando análisis…');
+          setScanProgress(30 + Math.round(m.progress * 10));
+        } else if (m.status === 'recognizing text') {
+          setOcrStatus('Leyendo texto…');
+          setScanProgress(40 + Math.round(m.progress * 58));
+        }
+      },
+    }).then(({ data: { text } }) => {
+      const result = parseReceiptText(text);
+      // If OCR couldn't find a total, keep 0 and let user fill it
+      finish(result);
+    }).catch(() => finish(FALLBACK));
+  }, [phase, capturedImg]);
 
   if (!open) return null;
 
-  // Mocked extraction (result of "AI analysis")
-  const extracted = {
-    merchant: 'OXXO Polanco',
+  const result = extracted || {
+    merchant: '', total: 0, category: 'otros',
     date: 'Hoy, ' + new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }),
-    total: 287,
-    items: [
-      { name: 'Coca-cola 600ml',   price: 22 },
-      { name: 'Sabritas adobadas', price: 26 },
-      { name: 'Gansito x2',        price: 36 },
-      { name: 'Recarga celular',   price: 100 },
-      { name: 'Pan dulce surtido', price: 78 },
-      { name: 'IVA 16%',           price: 25 },
-    ],
-    category: 'supermercado',
+    items: [],
   };
+  const catInfo = (APP_DATA.categories[result.category] || APP_DATA.categories.otros);
 
   return (
     <div style={{
@@ -450,9 +553,10 @@ function ScanModal({ open, onClose, onResult }) {
             )}
             {phase === 'scanning' && (
               <>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>Leyendo {Math.round(scanProgress)}%</div>
-                <div style={{ width: 180, height: 4, background: 'rgba(255,255,255,0.2)', borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{ width: scanProgress + '%', height: '100%', background: '#5DCC7A', transition: 'width 90ms linear' }}/>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>{ocrStatus}</div>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>{Math.round(scanProgress)}%</div>
+                <div style={{ width: 200, height: 4, background: 'rgba(255,255,255,0.2)', borderRadius: 2, overflow: 'hidden' }}>
+                  <div style={{ width: scanProgress + '%', height: '100%', background: '#5DCC7A', transition: 'width 120ms linear' }}/>
                 </div>
               </>
             )}
@@ -461,46 +565,53 @@ function ScanModal({ open, onClose, onResult }) {
       ) : (
         <div style={{ flex: 1, background: T.bg, color: T.ink, padding: 18, animation: 'fadeIn 240ms', overflowY: 'auto' }}>
           <div style={{ textAlign: 'center', marginBottom: 14 }}>
-            <div style={{ fontSize: 32, marginBottom: 4 }}>✨</div>
-            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: T.green }}>Detectado con éxito</div>
+            <div style={{ fontSize: 32, marginBottom: 4 }}>{result.total > 0 ? '✨' : '🔍'}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: result.total > 0 ? T.green : T.muted }}>
+              {result.total > 0 ? 'Detectado con éxito' : 'Revisión manual'}
+            </div>
           </div>
 
           {/* Thumbnail of captured photo */}
           {capturedImg && (
-            <div style={{ marginBottom: 14, borderRadius: 14, overflow: 'hidden', maxHeight: 140 }}>
-              <img src={capturedImg} alt="ticket" style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block' }} />
+            <div style={{ marginBottom: 14, borderRadius: 14, overflow: 'hidden', maxHeight: 130 }}>
+              <img src={capturedImg} alt="ticket" style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block' }} />
+            </div>
+          )}
+
+          {result.total === 0 && (
+            <div style={{ background: '#FFF3CD', borderRadius: 12, padding: '10px 14px', marginBottom: 14, fontSize: 12.5, color: '#856404' }}>
+              No se detectó el monto. Puedes ajustarlo manualmente en el formulario.
             </div>
           )}
 
           <Card pad={18}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-              <CatIcon cat="supermercado" size={44} />
+              <div style={{
+                width: 44, height: 44, borderRadius: 14,
+                background: catInfo.color + '22',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 22,
+              }}>{catInfo.icon}</div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>{extracted.merchant}</div>
-                <div style={{ fontSize: 12, color: T.muted, marginTop: 1 }}>{extracted.date} · {extracted.items.length} líneas</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>{result.merchant || 'Comercio'}</div>
+                <div style={{ fontSize: 12, color: T.muted, marginTop: 1 }}>{result.date}</div>
               </div>
-              <div style={{ fontFamily: 'inherit', fontWeight: 500, fontSize: 28, color: T.red, lineHeight: 1 }}>−{fmt(extracted.total)}</div>
+              {result.total > 0 && (
+                <div style={{ fontFamily: 'inherit', fontWeight: 500, fontSize: 26, color: T.red, lineHeight: 1 }}>−{fmt(result.total)}</div>
+              )}
             </div>
-            <div style={{ background: T.soft, borderRadius: 12, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 200, overflowY: 'auto' }}>
-              {extracted.items.map((it, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
-                  <span style={{ color: T.ink2 }}>{it.name}</span>
-                  <span style={{ fontWeight: 600, color: T.ink }}>${it.price}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: T.gold, background: T.goldSoft, padding: '6px 10px', borderRadius: 999 }}>🛒 Supermercado</div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: T.blue, background: T.blueSoft, padding: '6px 10px', borderRadius: 999 }}>💳 BBVA Débito</div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, background: T.soft, padding: '6px 10px', borderRadius: 999 }}>👤 Ulises</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: catInfo.color, background: catInfo.color + '18', padding: '6px 10px', borderRadius: 999 }}>
+                {catInfo.icon} {catInfo.name}
+              </div>
             </div>
           </Card>
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
             <button onClick={onClose} style={{
               flex: 1, background: '#fff', color: T.ink, border: '1px solid ' + T.border,
               padding: '14px', borderRadius: 14, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
-            }}>Editar</button>
-            <button onClick={() => { onResult(extracted); onClose(); }} style={{
+            }}>Cancelar</button>
+            <button onClick={() => { onResult(result); onClose(); }} style={{
               flex: 1, background: T.green, color: '#fff', border: 'none',
               padding: '14px', borderRadius: 14, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
             }}>Guardar gasto</button>
