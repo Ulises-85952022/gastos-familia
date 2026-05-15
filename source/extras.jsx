@@ -181,11 +181,107 @@ function FullSheet({ children, title, onClose, accent = T.ink }) {
 function ScanModal({ open, onClose, onResult }) {
   const [phase, setPhase] = React.useState('aim'); // aim → scanning → result
   const [scanProgress, setScanProgress] = React.useState(0);
+  const [camError, setCamError] = React.useState(null); // null | 'denied' | 'unavailable'
+  const [torchOn, setTorchOn] = React.useState(false);
+  const [capturedImg, setCapturedImg] = React.useState(null);
+  const videoRef = React.useRef(null);
+  const streamRef = React.useRef(null);
+  const canvasRef = React.useRef(null);
 
+  // Start/stop camera when modal opens/closes
   React.useEffect(() => {
-    if (!open) { setPhase('aim'); setScanProgress(0); return; }
+    if (!open) {
+      stopCamera();
+      setPhase('aim');
+      setScanProgress(0);
+      setCamError(null);
+      setTorchOn(false);
+      setCapturedImg(null);
+      return;
+    }
+    startCamera();
   }, [open]);
 
+  // Attach stream to video element once both are ready
+  React.useEffect(() => {
+    if (streamRef.current && videoRef.current && !videoRef.current.srcObject) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+  });
+
+  function startCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setCamError('unavailable');
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false,
+    }).then(stream => {
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
+    }).catch(err => {
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setCamError('denied');
+      } else {
+        setCamError('unavailable');
+      }
+    });
+  }
+
+  function stopCamera() {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) videoRef.current.srcObject = null;
+  }
+
+  function toggleTorch() {
+    const track = streamRef.current && streamRef.current.getVideoTracks()[0];
+    if (!track) return;
+    const newVal = !torchOn;
+    track.applyConstraints({ advanced: [{ torch: newVal }] })
+      .then(() => setTorchOn(newVal))
+      .catch(() => {}); // torch not supported on this device
+  }
+
+  function captureAndScan() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (video && canvas) {
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      setCapturedImg(canvas.toDataURL('image/jpeg', 0.92));
+    }
+    stopCamera();
+    setPhase('scanning');
+  }
+
+  function openGallery() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        setCapturedImg(ev.target.result);
+        stopCamera();
+        setPhase('scanning');
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  }
+
+  // Scanning progress animation
   React.useEffect(() => {
     if (phase !== 'scanning') return;
     let p = 0;
@@ -199,13 +295,13 @@ function ScanModal({ open, onClose, onResult }) {
 
   if (!open) return null;
 
-  // Mocked extraction
+  // Mocked extraction (result of "AI analysis")
   const extracted = {
     merchant: 'OXXO Polanco',
-    date: 'Hoy, 14 may',
+    date: 'Hoy, ' + new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }),
     total: 287,
     items: [
-      { name: 'Coca-cola 600ml',  price: 22 },
+      { name: 'Coca-cola 600ml',   price: 22 },
       { name: 'Sabritas adobadas', price: 26 },
       { name: 'Gansito x2',        price: 36 },
       { name: 'Recarga celular',   price: 100 },
@@ -222,10 +318,15 @@ function ScanModal({ open, onClose, onResult }) {
       color: '#fff',
       animation: 'fadeIn 200ms',
     }}>
+      {/* Hidden canvas for frame capture */}
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+
       {/* Top bar */}
       <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '56px 18px 14px',
+        background: 'linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 100%)',
       }}>
         <button onClick={onClose} style={{
           width: 36, height: 36, borderRadius: 18,
@@ -235,81 +336,115 @@ function ScanModal({ open, onClose, onResult }) {
         <div style={{ fontSize: 15, fontWeight: 700 }}>
           {phase === 'aim' ? 'Escanear ticket' : phase === 'scanning' ? 'Analizando…' : 'Detectado'}
         </div>
-        <div style={{ width: 36, fontSize: 18, opacity: 0.6, textAlign: 'right' }}>⚡</div>
+        <button onClick={toggleTorch} style={{
+          width: 36, height: 36, borderRadius: 18,
+          background: torchOn ? 'rgba(255,220,0,0.35)' : 'rgba(255,255,255,0.18)',
+          border: 'none', color: '#fff', fontSize: 18,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+        }}>⚡</button>
       </div>
 
       {phase !== 'result' ? (
-        <div style={{ flex: 1, position: 'relative', overflow: 'hidden', padding: '0 32px' }}>
-          {/* Fake receipt preview */}
-          <div style={{
-            position: 'absolute', inset: '0 32px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <div style={{
-              width: '100%', maxWidth: 240,
-              background: '#fefdf7', color: '#000',
-              padding: '20px 18px', borderRadius: 4,
-              boxShadow: '0 30px 60px rgba(0,0,0,0.5)',
-              fontFamily: '"Courier New", monospace', fontSize: 9.5, lineHeight: 1.4,
-              transform: phase === 'scanning' ? 'rotate(-2deg) scale(1.02)' : 'rotate(-3deg)',
-              transition: 'transform 600ms',
-            }}>
-              <div style={{ textAlign: 'center', fontWeight: 700, fontSize: 11, marginBottom: 6 }}>OXXO POLANCO</div>
-              <div style={{ textAlign: 'center', marginBottom: 10, opacity: 0.7 }}>Av. Presidente Masaryk 123</div>
-              <div style={{ borderTop: '1px dashed #888', paddingTop: 6 }}>
-                {extracted.items.slice(0, 5).map((it, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{it.name}</span><span>${it.price}</span>
-                  </div>
-                ))}
-                <div style={{ borderTop: '1px dashed #888', marginTop: 6, paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
-                  <span>TOTAL</span><span>${extracted.total}</span>
-                </div>
-              </div>
-              <div style={{ textAlign: 'center', marginTop: 10, opacity: 0.6 }}>* Gracias por su compra *</div>
-            </div>
-          </div>
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
 
-          {/* Corner brackets */}
-          {phase === 'aim' && [
-            { top: 90,   left: 18,  rot: 0   },
-            { top: 90,   right: 18, rot: 90  },
-            { bottom: 200, left: 18,  rot: -90 },
-            { bottom: 200, right: 18, rot: 180 },
+          {/* Live camera feed */}
+          {!camError && (
+            <video ref={videoRef} autoPlay playsInline muted
+              style={{
+                position: 'absolute', inset: 0,
+                width: '100%', height: '100%',
+                objectFit: 'cover',
+                opacity: phase === 'scanning' ? 0 : 1,
+                transition: 'opacity 300ms',
+              }}
+            />
+          )}
+
+          {/* Captured frame shown during scanning */}
+          {capturedImg && phase === 'scanning' && (
+            <img src={capturedImg} alt="" style={{
+              position: 'absolute', inset: 0,
+              width: '100%', height: '100%',
+              objectFit: 'cover',
+            }} />
+          )}
+
+          {/* Camera error states */}
+          {camError && (
+            <div style={{
+              position: 'absolute', inset: 0,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              gap: 12, padding: 32, textAlign: 'center',
+            }}>
+              <div style={{ fontSize: 40 }}>{camError === 'denied' ? '🔒' : '📷'}</div>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>
+                {camError === 'denied' ? 'Permiso denegado' : 'Cámara no disponible'}
+              </div>
+              <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.65)', maxWidth: 260 }}>
+                {camError === 'denied'
+                  ? 'Permite el acceso a la cámara en los ajustes del navegador y vuelve a intentarlo.'
+                  : 'Tu dispositivo no tiene cámara disponible. Usa la galería para subir una foto del ticket.'}
+              </div>
+              {camError === 'denied' && (
+                <button onClick={startCamera} style={{
+                  marginTop: 8, padding: '12px 24px', borderRadius: 12,
+                  background: '#fff', color: '#000', border: 'none',
+                  fontWeight: 700, fontSize: 14, cursor: 'pointer',
+                }}>Reintentar</button>
+              )}
+            </div>
+          )}
+
+          {/* Corner brackets (aim phase) */}
+          {phase === 'aim' && !camError && [
+            { top: 100,    left: 32,  rot: 0   },
+            { top: 100,    right: 32, rot: 90  },
+            { bottom: 210, left: 32,  rot: -90 },
+            { bottom: 210, right: 32, rot: 180 },
           ].map((c, i) => (
-            <div key={i} style={{ position: 'absolute', ...c, width: 28, height: 28, borderTop: '3px solid #fff', borderLeft: '3px solid #fff', transform: `rotate(${c.rot}deg)`, borderRadius: 4 }} />
+            <div key={i} style={{
+              position: 'absolute', ...c, width: 30, height: 30,
+              borderTop: '3px solid #fff', borderLeft: '3px solid #fff',
+              transform: `rotate(${c.rot}deg)`, borderRadius: 4,
+            }} />
           ))}
 
-          {/* Scanning laser */}
+          {/* Scanning laser over captured frame */}
           {phase === 'scanning' && (
             <div style={{
-              position: 'absolute', left: 32, right: 32,
-              top: `${15 + (scanProgress * 0.55)}%`,
-              height: 2, background: 'linear-gradient(90deg, transparent, #5DCC7A, transparent)',
+              position: 'absolute', left: 0, right: 0,
+              top: `${10 + (scanProgress * 0.7)}%`,
+              height: 2,
+              background: 'linear-gradient(90deg, transparent, #5DCC7A, transparent)',
               boxShadow: '0 0 20px #5DCC7A, 0 0 40px #5DCC7A',
               transition: 'top 90ms linear',
+              zIndex: 3,
             }}/>
           )}
 
-          {/* Bottom shutter */}
+          {/* Bottom controls */}
           <div style={{
-            position: 'absolute', left: 0, right: 0, bottom: 0,
-            padding: '0 0 90px',
+            position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 2,
+            padding: '0 0 56px',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
+            background: 'linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 100%)',
           }}>
             {phase === 'aim' && (
               <>
-                <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.7)', textAlign: 'center', maxWidth: 240 }}>
-                  Encuadra el ticket dentro de los marcadores. La IA extraerá monto, fecha y categoría.
+                <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.8)', textAlign: 'center', maxWidth: 240 }}>
+                  Encuadra el ticket dentro de los marcadores
                 </div>
-                <button onClick={() => setPhase('scanning')} style={{
-                  width: 68, height: 68, borderRadius: 34,
-                  background: '#fff', border: '4px solid rgba(255,255,255,0.3)',
-                  cursor: 'pointer', boxShadow: '0 0 0 2px #fff inset',
-                }}/>
-                <div style={{ display: 'flex', gap: 20, opacity: 0.8 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600 }}>📁 Galería</div>
-                  <div style={{ fontSize: 11, fontWeight: 600 }}>⚡ Flash</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 40 }}>
+                  <button onClick={openGallery} style={{
+                    background: 'rgba(255,255,255,0.18)', border: 'none', color: '#fff',
+                    padding: '10px 14px', borderRadius: 12, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                  }}>📁 Galería</button>
+                  <button onClick={captureAndScan} style={{
+                    width: 72, height: 72, borderRadius: 36,
+                    background: '#fff', border: '4px solid rgba(255,255,255,0.35)',
+                    cursor: 'pointer', boxShadow: '0 0 0 2px #fff inset',
+                  }}/>
+                  <div style={{ width: 52 }} />
                 </div>
               </>
             )}
@@ -329,6 +464,14 @@ function ScanModal({ open, onClose, onResult }) {
             <div style={{ fontSize: 32, marginBottom: 4 }}>✨</div>
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: T.green }}>Detectado con éxito</div>
           </div>
+
+          {/* Thumbnail of captured photo */}
+          {capturedImg && (
+            <div style={{ marginBottom: 14, borderRadius: 14, overflow: 'hidden', maxHeight: 140 }}>
+              <img src={capturedImg} alt="ticket" style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block' }} />
+            </div>
+          )}
+
           <Card pad={18}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
               <CatIcon cat="supermercado" size={44} />
