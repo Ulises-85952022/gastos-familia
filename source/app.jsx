@@ -89,6 +89,12 @@ function App() {
   React.useEffect(() => { saveLS('customCats', customCats); }, [customCats]);
   React.useEffect(() => { saveLS('customSources', customSources); }, [customSources]);
 
+  const [activeMember, setActiveMember] = React.useState(
+    () => loadLS('activeMember', APP_DATA.members[0])
+  );
+  React.useEffect(() => { saveLS('activeMember', activeMember); }, [activeMember]);
+  window.__activeUser = activeMember;
+
   const FAMILIA_MEMBER = { id: 'familia', name: 'Familia', color: '#2C2C2C', initials: 'FA', role: 'Vista familiar' };
   const switcherMembers = [...APP_DATA.members, FAMILIA_MEMBER];
 
@@ -169,12 +175,6 @@ function App() {
     setTxs(prev => prev.filter(t => t.id !== id));
     showToast('Movimiento eliminado', T.muted);
   };
-
-  const [activeMember, setActiveMember] = React.useState(
-    () => loadLS('activeMember', APP_DATA.members[0])
-  );
-  React.useEffect(() => { saveLS('activeMember', activeMember); }, [activeMember]);
-  window.__activeUser = activeMember;
 
   const switchMember = (m) => {
     setActiveMember(m);
