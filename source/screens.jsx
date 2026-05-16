@@ -24,9 +24,12 @@ function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, op
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8 }}>
         <div>
-          <div style={{ fontSize: 13, color: T.muted, fontWeight: 500 }}>Hola,</div>
+          <div style={{ fontSize: 13, color: T.muted, fontWeight: 500 }}>
+            {activeMember && activeMember.id === 'familia' ? 'Vista combinada' : 'Hola,'}
+          </div>
           <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: -0.4, color: T.ink, display: 'flex', alignItems: 'baseline', gap: 6 }}>
-            {user.name} <span style={{ fontSize: 20 }}>👋</span>
+            {activeMember && activeMember.id === 'familia' ? 'Resumen familiar' : user.name}
+            {(!activeMember || activeMember.id !== 'familia') && <span style={{ fontSize: 20 }}>👋</span>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -496,14 +499,22 @@ const secondaryBtn = {
 // FAMILIA
 // ═══════════════════════════════════════════════════════════
 function FamiliaScreen({ user, activeMember, transactions, onAction }) {
+  const ym = new Date().toISOString().slice(0, 7);
   const contribByMember = {};
   (transactions || []).forEach(t => {
-    contribByMember[t.who] ||= { in: 0, out: 0, sav: 0 };
-    if (t.kind === 'ingreso') contribByMember[t.who].in += t.amount;
-    else if (t.kind === 'gasto') contribByMember[t.who].out += t.amount;
-    else contribByMember[t.who].sav += t.amount;
+    if (!contribByMember[t.who]) contribByMember[t.who] = { in: 0, out: 0, sav: 0, inAll: 0, outAll: 0, savAll: 0 };
+    contribByMember[t.who].inAll  += t.kind === 'ingreso' ? t.amount : 0;
+    contribByMember[t.who].outAll += t.kind === 'gasto'   ? t.amount : 0;
+    contribByMember[t.who].savAll += t.kind === 'ahorro'  ? t.amount : 0;
+    if (t.date && t.date.startsWith(ym)) {
+      if (t.kind === 'ingreso') contribByMember[t.who].in  += t.amount;
+      else if (t.kind === 'gasto') contribByMember[t.who].out += t.amount;
+      else contribByMember[t.who].sav += t.amount;
+    }
   });
   const me = activeMember || APP_DATA.members[0];
+  const isFamiliaMode = me.id === 'familia';
+  const realMembers = APP_DATA.members;
 
   return (
     <div style={{ padding: '0 18px 120px', display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -512,8 +523,46 @@ function FamiliaScreen({ user, activeMember, transactions, onAction }) {
         <div style={{ fontSize: 24, fontWeight: 700, color: T.ink, letterSpacing: -0.3 }}>Familia</div>
       </div>
 
-      {/* Your card */}
-      <Card pad={18} style={{ background: 'linear-gradient(135deg, #FBEFDC 0%, #FCE7EE 100%)', border: '1px solid rgba(201,122,42,0.2)' }}>
+      {/* Month report — per member breakdown */}
+      <Card pad={18}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: T.muted, letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 14 }}>Reporte del mes</div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid ' + T.border }}>
+          <div style={{ flex: 1, fontSize: 11, color: T.muted, fontWeight: 600 }}>Miembro</div>
+          <div style={{ width: 64, fontSize: 11, color: T.green, fontWeight: 700, textAlign: 'right' }}>Ingresos</div>
+          <div style={{ width: 64, fontSize: 11, color: T.red, fontWeight: 700, textAlign: 'right' }}>Gastos</div>
+          <div style={{ width: 64, fontSize: 11, color: T.blue, fontWeight: 700, textAlign: 'right' }}>Ahorros</div>
+        </div>
+        {realMembers.map((m, i) => {
+          const c = contribByMember[m.name] || { in: 0, out: 0, sav: 0 };
+          return (
+            <div key={m.id} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '8px 0', borderBottom: i < realMembers.length - 1 ? '1px solid ' + T.border : 'none' }}>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 14, background: m.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800 }}>{m.initials}</div>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: T.ink }}>{m.name}</div>
+              </div>
+              <div style={{ width: 64, fontSize: 12.5, fontWeight: 700, color: T.green, textAlign: 'right' }}>{fmt(c.in, { abbr: true })}</div>
+              <div style={{ width: 64, fontSize: 12.5, fontWeight: 700, color: T.red, textAlign: 'right' }}>{fmt(c.out, { abbr: true })}</div>
+              <div style={{ width: 64, fontSize: 12.5, fontWeight: 700, color: T.blue, textAlign: 'right' }}>{fmt(c.sav, { abbr: true })}</div>
+            </div>
+          );
+        })}
+        {(() => {
+          const totIn  = realMembers.reduce((s, m) => s + (contribByMember[m.name]?.in  || 0), 0);
+          const totOut = realMembers.reduce((s, m) => s + (contribByMember[m.name]?.out || 0), 0);
+          const totSav = realMembers.reduce((s, m) => s + (contribByMember[m.name]?.sav || 0), 0);
+          return (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '10px 0 0', borderTop: '1.5px solid ' + T.ink2, marginTop: 4 }}>
+              <div style={{ flex: 1, fontSize: 12.5, fontWeight: 800, color: T.ink }}>Total familia</div>
+              <div style={{ width: 64, fontSize: 12.5, fontWeight: 800, color: T.green, textAlign: 'right' }}>{fmt(totIn, { abbr: true })}</div>
+              <div style={{ width: 64, fontSize: 12.5, fontWeight: 800, color: T.red, textAlign: 'right' }}>{fmt(totOut, { abbr: true })}</div>
+              <div style={{ width: 64, fontSize: 12.5, fontWeight: 800, color: T.blue, textAlign: 'right' }}>{fmt(totSav, { abbr: true })}</div>
+            </div>
+          );
+        })()}
+      </Card>
+
+      {/* Your card — hidden in Familia mode */}
+      {!isFamiliaMode && <Card pad={18} style={{ background: 'linear-gradient(135deg, #FBEFDC 0%, #FCE7EE 100%)', border: '1px solid rgba(201,122,42,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{
             width: 56, height: 56, borderRadius: 28, background: me.color, color: '#fff',
@@ -533,7 +582,7 @@ function FamiliaScreen({ user, activeMember, transactions, onAction }) {
             color: T.ink, cursor: 'pointer', fontFamily: 'inherit',
           }}>Editar</button>
         </div>
-      </Card>
+      </Card>}
 
       {/* Sharing explanation */}
       <Card pad={16}>
@@ -562,7 +611,7 @@ function FamiliaScreen({ user, activeMember, transactions, onAction }) {
 
       <Section title="Miembros" action="+ Invitar" onAction={() => onAction && onAction('invite')}>
         <Card pad={0}>
-          {APP_DATA.members.filter(m => m.id !== me.id).map((m, i, arr) => {
+          {APP_DATA.members.filter(m => isFamiliaMode || m.id !== me.id).map((m, i, arr) => {
             const c = contribByMember[m.name] || { in: 0, out: 0, sav: 0 };
             return (
               <div key={m.id} style={{

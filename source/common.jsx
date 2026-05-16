@@ -160,7 +160,7 @@ function Section({ title, action, onAction, children, gap = 12 }) {
 }
 
 // ─── Bottom tab bar ──────────────────────────────────────────
-function TabBar({ tab, onTab, onAdd }) {
+function TabBar({ tab, onTab, onAdd, hideAdd }) {
   const items = [
     { id: 'inicio',     icon: HomeIcon,    label: 'Inicio' },
     { id: 'movimientos',icon: ListIcon,    label: 'Movimientos' },
@@ -181,6 +181,7 @@ function TabBar({ tab, onTab, onAdd }) {
     }}>
       {items.map(it => {
         if (it.id === 'add') {
+          if (hideAdd) return <div key="add" style={{ width: 54 }} />;
           return (
             <button key="add" onClick={onAdd} style={{
               border: 'none', cursor: 'pointer',
