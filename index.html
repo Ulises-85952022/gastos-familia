@@ -49,12 +49,17 @@
 
 <script>
   window.onerror = function(msg, src, line, col, err) {
+    var detail = err ? (err.stack || err.message || msg) : msg;
     document.getElementById('root').innerHTML =
       '<div style="padding:32px;font-family:sans-serif;color:#c00">' +
       '<b>Error al cargar la app</b><br><br>' +
-      (msg || '') + '<br><small>' + (src||'') + ':' + line + '</small>' +
+      '<pre style="font-size:12px;white-space:pre-wrap;word-break:break-all">' + detail + '</pre>' +
+      '<small>' + (src||'') + ':' + line + '</small>' +
       '</div>';
   };
+  window.addEventListener('unhandledrejection', function(e) {
+    window.onerror(e.reason && e.reason.message, '', 0, 0, e.reason);
+  });
 </script>
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>

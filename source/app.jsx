@@ -90,7 +90,10 @@ function App() {
   React.useEffect(() => { saveLS('customSources', customSources); }, [customSources]);
 
   const [activeMember, setActiveMember] = React.useState(
-    () => loadLS('activeMember', APP_DATA.members[0])
+    () => {
+      const stored = loadLS('activeMember', null);
+      return (stored && stored.id) ? stored : APP_DATA.members[0];
+    }
   );
   React.useEffect(() => { saveLS('activeMember', activeMember); }, [activeMember]);
   window.__activeUser = activeMember;
@@ -100,7 +103,8 @@ function App() {
 
   // Derived month totals
   const month = React.useMemo(() => {
-    const totals = activeMember.id === 'familia'
+    if (!activeMember) return { income: 0, expenses: 0, savings: 0, label: getCurrentMonthLabel() };
+    const totals = activeMember?.id === 'familia'
       ? calcMonthTotals(txs)
       : calcMemberTotals(txs, activeMember.name);
     return { ...totals, label: getCurrentMonthLabel() };
@@ -113,7 +117,7 @@ function App() {
   };
 
   const openAdd = (kind = 'gasto') => {
-    if (activeMember.id === 'familia') return;
+    if (activeMember?.id === 'familia') return;
     setAddKind(kind); setAddPrefill(null); setAddOpen(true);
   };
 
@@ -185,7 +189,7 @@ function App() {
   let screen;
   if (tab === 'inicio')
     screen = <DashboardScreen
-      user={{ name: activeMember.name }}
+      user={{ name: activeMember?.name || '' }}
       goTab={setTab} openAdd={openAdd}
       monthOverride={month} accounts={accounts} goals={goals}
       openAccounts={() => setAccountsOpen(true)}
@@ -205,7 +209,7 @@ function App() {
     screen = <AhorrosScreen goals={goals} onDeposit={() => openAdd('ahorro')} />;
   else if (tab === 'familia')
     screen = <FamiliaScreen
-      user={{ name: activeMember.name }}
+      user={{ name: activeMember?.name || '' }}
       activeMember={activeMember}
       transactions={txs}
       onAction={(action) => {
@@ -248,7 +252,7 @@ function App() {
         }}>{toast.msg}</div>
       )}
 
-      <TabBar tab={tab} onTab={setTab} onAdd={() => openAdd('gasto')} hideAdd={activeMember.id === 'familia'} />
+      <TabBar tab={tab} onTab={setTab} onAdd={() => openAdd('gasto')} hideAdd={activeMember?.id === 'familia'} />
 
       <AddSheet
         open={addOpen}
