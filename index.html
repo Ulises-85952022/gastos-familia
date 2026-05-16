@@ -47,11 +47,19 @@
 <body>
 <div id="root"></div>
 
+<script>
+  window.onerror = function(msg, src, line, col, err) {
+    document.getElementById('root').innerHTML =
+      '<div style="padding:32px;font-family:sans-serif;color:#c00">' +
+      '<b>Error al cargar la app</b><br><br>' +
+      (msg || '') + '<br><small>' + (src||'') + ':' + line + '</small>' +
+      '</div>';
+  };
+</script>
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
 
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 <script src="source/data.js"></script>
 <script type="text/babel" src="source/common.jsx"></script>
 <script type="text/babel" src="source/creators.jsx"></script>

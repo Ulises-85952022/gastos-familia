@@ -370,18 +370,8 @@ function ScanModal({ open, onClose, onResult }) {
       setTimeout(() => setPhase('result'), 350);
     }
 
-    if (typeof Tesseract === 'undefined') {
-      // Library not loaded — animate fake progress then show fallback
-      let p = 0;
-      const id = setInterval(() => {
-        p += 6 + Math.random() * 8;
-        if (p >= 100) { clearInterval(id); finish(FALLBACK); }
-        else setScanProgress(Math.min(p, 99));
-      }, 90);
-      return () => clearInterval(id);
-    }
-
-    Tesseract.recognize(capturedImg, 'spa', {
+    function runOCR() {
+      Tesseract.recognize(capturedImg, 'spa', {
       logger: m => {
         if (m.status === 'loading tesseract core') {
           setOcrStatus('Cargando motor…');
@@ -400,11 +390,29 @@ function ScanModal({ open, onClose, onResult }) {
           setScanProgress(40 + Math.round(m.progress * 58));
         }
       },
-    }).then(({ data: { text } }) => {
-      const result = parseReceiptText(text);
-      // If OCR couldn't find a total, keep 0 and let user fill it
-      finish(result);
-    }).catch(() => finish(FALLBACK));
+      }).then(({ data: { text } }) => {
+        finish(parseReceiptText(text));
+      }).catch(() => finish(FALLBACK));
+    }
+
+    // Load Tesseract lazily if not yet available, then run OCR
+    if (typeof Tesseract !== 'undefined') {
+      runOCR();
+    } else {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js';
+      script.onload = runOCR;
+      script.onerror = () => {
+        // CDN failed — animate fake progress then fall back
+        let p = 0;
+        const id = setInterval(() => {
+          p += 6 + Math.random() * 8;
+          if (p >= 100) { clearInterval(id); finish(FALLBACK); }
+          else setScanProgress(Math.min(p, 99));
+        }, 90);
+      };
+      document.head.appendChild(script);
+    }
   }, [phase, capturedImg]);
 
   if (!open) return null;
