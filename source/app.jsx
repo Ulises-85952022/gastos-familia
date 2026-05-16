@@ -179,6 +179,22 @@ function App() {
       user={{ name: activeMember.name }}
       activeMember={activeMember}
       transactions={txs}
+      onAction={(action) => {
+        const msgs = {
+          'invite':         ['Código copiado: RAMIREZ-2026', T.blue],
+          'edit-profile':   ['Editar perfil — próximamente', T.ink],
+          'settle':         ['Saldo enviado a Carla 👍', T.green],
+          'split':          ['Dividir gasto — próximamente', T.ink],
+          'notificaciones': ['Notificaciones — próximamente', T.ink],
+          'presupuestos':   ['Presupuestos — próximamente', T.ink],
+          'recurrentes':    ['Pagos recurrentes — próximamente', T.ink],
+          'exportar':       ['Exportando CSV…', T.blue],
+          'apariencia':     ['Apariencia — próximamente', T.ink],
+          'privacidad':     ['Privacidad — próximamente', T.ink],
+        };
+        const [msg, color] = msgs[action] || ['Función próximamente', T.ink];
+        showToast(msg, color);
+      }}
     />;
 
   return (
