@@ -129,6 +129,7 @@ function App() {
       ) || 'Movimiento',
       who: data.member,
       amount: data.amount,
+      account: data.account || null,
     };
 
     setTxs(prev => [newTx, ...prev]);
@@ -151,8 +152,16 @@ function App() {
     showToast('Movimiento eliminado', T.muted);
   };
 
-  const activeMember = APP_DATA.members[0];
+  const [activeMember, setActiveMember] = React.useState(
+    () => loadLS('activeMember', APP_DATA.members[0])
+  );
+  React.useEffect(() => { saveLS('activeMember', activeMember); }, [activeMember]);
   window.__activeUser = activeMember;
+
+  const switchMember = (m) => {
+    setActiveMember(m);
+    showToast('Sesión: ' + m.name, m.color);
+  };
 
   // ── Screen routing ─────────────────────────────────────────
   let screen;
@@ -166,6 +175,8 @@ function App() {
       openAssistant={() => setAssistantOpen(true)}
       openReminders={() => setRemindersOpen(true)}
       activeMember={activeMember}
+      members={APP_DATA.members}
+      onSwitchMember={switchMember}
     />;
   else if (tab === 'movimientos')
     screen = <MovimientosScreen
@@ -230,6 +241,7 @@ function App() {
         customCats={customCats}
         customSources={customSources}
         goals={goals}
+        accounts={accounts}
         activeMember={activeMember}
         onCreateCategory={(kind) => { setCatCreatorKind(kind); setCatCreatorOpen(true); }}
         onSave={handleSave}

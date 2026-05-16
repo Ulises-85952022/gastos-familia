@@ -6,7 +6,8 @@ window.APP_DATA = {
     initials: 'MF',
   },
   members: [
-    { id: 'yo', name: 'Yo', role: 'Admin', color: '#3B5BDB', initials: 'YO', avatar: '👤' },
+    { id: 'yo',     name: 'Yo',      role: 'Admin',    color: '#3B5BDB', initials: 'YO', avatar: '👤' },
+    { id: 'esposa', name: 'Esposa',  role: 'Familiar', color: '#E64980', initials: 'ES', avatar: '👤' },
   ],
   categories: {
     supermercado:    { name: 'Supermercado',    icon: '🛒', color: '#F59F00' },
