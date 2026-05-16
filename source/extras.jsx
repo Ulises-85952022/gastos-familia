@@ -330,7 +330,6 @@ function ScanModal({ open, onClose, onResult }) {
     stopCamera();
     setPhase('scanning');
   }
-  }
 
   function openGallery() {
     const input = document.createElement('input');
