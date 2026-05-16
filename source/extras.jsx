@@ -241,15 +241,15 @@ function parseReceiptText(text) {
 }
 
 function ScanModal({ open, onClose, onResult }) {
-  const [phase, setPhase] = React.useState('aim'); // aim → scanning → result
+  const [phase, setPhase] = React.useState('aim');
   const [scanProgress, setScanProgress] = React.useState(0);
-  const [camError, setCamError] = React.useState(null); // null | 'denied' | 'unavailable'
+  const [camError, setCamError] = React.useState(null); // null | 'insecure' | 'denied' | 'unavailable'
   const [torchOn, setTorchOn] = React.useState(false);
   const [capturedImg, setCapturedImg] = React.useState(null);
   const [extracted, setExtracted] = React.useState(null);
   const [ocrStatus, setOcrStatus] = React.useState('');
+  const [stream, setStream] = React.useState(null); // stream in state → triggers re-render to attach to <video>
   const videoRef = React.useRef(null);
-  const streamRef = React.useRef(null);
   const canvasRef = React.useRef(null);
 
   // Start/stop camera when modal opens/closes
@@ -268,15 +268,20 @@ function ScanModal({ open, onClose, onResult }) {
     startCamera();
   }, [open]);
 
-  // Attach stream to video element once both are ready
+  // Attach stream to video element whenever either becomes available
   React.useEffect(() => {
-    if (streamRef.current && videoRef.current && !videoRef.current.srcObject) {
-      videoRef.current.srcObject = streamRef.current;
-      videoRef.current.play().catch(() => {});
-    }
-  });
+    const video = videoRef.current;
+    if (!stream || !video) return;
+    if (video.srcObject === stream) return;
+    video.srcObject = stream;
+    video.play().catch(() => {});
+  }, [stream]);
 
   function startCamera() {
+    if (!window.isSecureContext) {
+      setCamError('insecure');
+      return;
+    }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCamError('unavailable');
       return;
@@ -284,12 +289,8 @@ function ScanModal({ open, onClose, onResult }) {
     navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
       audio: false,
-    }).then(stream => {
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(() => {});
-      }
+    }).then(s => {
+      setStream(s);
     }).catch(err => {
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         setCamError('denied');
@@ -300,26 +301,27 @@ function ScanModal({ open, onClose, onResult }) {
   }
 
   function stopCamera() {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    }
+    setStream(prev => {
+      if (prev) prev.getTracks().forEach(t => t.stop());
+      return null;
+    });
     if (videoRef.current) videoRef.current.srcObject = null;
   }
 
   function toggleTorch() {
-    const track = streamRef.current && streamRef.current.getVideoTracks()[0];
+    if (!stream) return;
+    const track = stream.getVideoTracks()[0];
     if (!track) return;
     const newVal = !torchOn;
     track.applyConstraints({ advanced: [{ torch: newVal }] })
       .then(() => setTorchOn(newVal))
-      .catch(() => {}); // torch not supported on this device
+      .catch(() => {});
   }
 
   function captureAndScan() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (video && canvas) {
+    if (video && canvas && video.readyState >= 2) {
       canvas.width = video.videoWidth || 640;
       canvas.height = video.videoHeight || 480;
       canvas.getContext('2d').drawImage(video, 0, 0);
@@ -327,6 +329,7 @@ function ScanModal({ open, onClose, onResult }) {
     }
     stopCamera();
     setPhase('scanning');
+  }
   }
 
   function openGallery() {
@@ -450,6 +453,18 @@ function ScanModal({ open, onClose, onResult }) {
       {phase !== 'result' ? (
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
 
+          {/* Loading indicator while stream starts */}
+          {!camError && !stream && (
+            <div style={{
+              position: 'absolute', inset: 0,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              gap: 10,
+            }}>
+              <div style={{ fontSize: 32 }}>📷</div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>Iniciando cámara…</div>
+            </div>
+          )}
+
           {/* Live camera feed */}
           {!camError && (
             <video ref={videoRef} autoPlay playsInline muted
@@ -479,27 +494,38 @@ function ScanModal({ open, onClose, onResult }) {
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
               gap: 12, padding: 32, textAlign: 'center',
             }}>
-              <div style={{ fontSize: 40 }}>{camError === 'denied' ? '🔒' : '📷'}</div>
+              <div style={{ fontSize: 40 }}>
+                {camError === 'denied' ? '🔒' : camError === 'insecure' ? '⚠️' : '📷'}
+              </div>
               <div style={{ fontSize: 15, fontWeight: 700 }}>
-                {camError === 'denied' ? 'Permiso denegado' : 'Cámara no disponible'}
+                {camError === 'denied' ? 'Permiso denegado'
+                  : camError === 'insecure' ? 'Requiere HTTPS'
+                  : 'Cámara no disponible'}
               </div>
               <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.65)', maxWidth: 260 }}>
                 {camError === 'denied'
                   ? 'Permite el acceso a la cámara en los ajustes del navegador y vuelve a intentarlo.'
+                  : camError === 'insecure'
+                  ? 'La cámara solo funciona en HTTPS o localhost. Abre la app desde GitHub Pages o un servidor local.'
                   : 'Tu dispositivo no tiene cámara disponible. Usa la galería para subir una foto del ticket.'}
               </div>
-              {camError === 'denied' && (
-                <button onClick={startCamera} style={{
+              {(camError === 'denied' || camError === 'unavailable') && (
+                <button onClick={() => { setCamError(null); startCamera(); }} style={{
                   marginTop: 8, padding: '12px 24px', borderRadius: 12,
                   background: '#fff', color: '#000', border: 'none',
                   fontWeight: 700, fontSize: 14, cursor: 'pointer',
                 }}>Reintentar</button>
               )}
+              <button onClick={openGallery} style={{
+                marginTop: 4, padding: '10px 20px', borderRadius: 12,
+                background: 'rgba(255,255,255,0.15)', color: '#fff', border: 'none',
+                fontWeight: 600, fontSize: 13, cursor: 'pointer',
+              }}>📁 Usar galería</button>
             </div>
           )}
 
           {/* Corner brackets (aim phase) */}
-          {phase === 'aim' && !camError && [
+          {phase === 'aim' && !camError && stream && [
             { top: 100,    left: 32,  rot: 0   },
             { top: 100,    right: 32, rot: 90  },
             { bottom: 210, left: 32,  rot: -90 },
@@ -542,10 +568,13 @@ function ScanModal({ open, onClose, onResult }) {
                     background: 'rgba(255,255,255,0.18)', border: 'none', color: '#fff',
                     padding: '10px 14px', borderRadius: 12, fontSize: 11, fontWeight: 700, cursor: 'pointer',
                   }}>📁 Galería</button>
-                  <button onClick={captureAndScan} style={{
+                  <button onClick={captureAndScan} disabled={!stream} style={{
                     width: 72, height: 72, borderRadius: 36,
-                    background: '#fff', border: '4px solid rgba(255,255,255,0.35)',
-                    cursor: 'pointer', boxShadow: '0 0 0 2px #fff inset',
+                    background: stream ? '#fff' : 'rgba(255,255,255,0.3)',
+                    border: '4px solid rgba(255,255,255,0.35)',
+                    cursor: stream ? 'pointer' : 'default',
+                    boxShadow: '0 0 0 2px #fff inset',
+                    transition: 'background 300ms',
                   }}/>
                   <div style={{ width: 52 }} />
                 </div>

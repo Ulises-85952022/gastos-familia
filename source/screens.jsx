@@ -479,7 +479,7 @@ const secondaryBtn = {
 // ═══════════════════════════════════════════════════════════
 // FAMILIA
 // ═══════════════════════════════════════════════════════════
-function FamiliaScreen({ user, activeMember, transactions }) {
+function FamiliaScreen({ user, activeMember, transactions, onAction }) {
   const contribByMember = {};
   (transactions || []).forEach(t => {
     contribByMember[t.who] ||= { in: 0, out: 0, sav: 0 };
@@ -511,7 +511,7 @@ function FamiliaScreen({ user, activeMember, transactions }) {
             </div>
             <div style={{ fontSize: 12, color: T.muted }}>{me.role} · Sólo tú puedes editar lo tuyo</div>
           </div>
-          <button style={{
+          <button onClick={() => onAction && onAction('edit-profile')} style={{
             background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(0,0,0,0.06)',
             borderRadius: 999, padding: '8px 14px', fontSize: 12.5, fontWeight: 700,
             color: T.ink, cursor: 'pointer', fontFamily: 'inherit',
@@ -544,7 +544,7 @@ function FamiliaScreen({ user, activeMember, transactions }) {
         </div>
       </Card>
 
-      <Section title="Miembros" action="+ Invitar">
+      <Section title="Miembros" action="+ Invitar" onAction={() => onAction && onAction('invite')}>
         <Card pad={0}>
           {APP_DATA.members.filter(m => m.id !== me.id).map((m, i, arr) => {
             const c = contribByMember[m.name] || { in: 0, out: 0, sav: 0 };
@@ -565,7 +565,7 @@ function FamiliaScreen({ user, activeMember, transactions }) {
               </div>
             );
           })}
-          <div style={{
+          <div onClick={() => onAction && onAction('invite')} style={{
             display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
             background: T.soft, cursor: 'pointer',
           }}>
@@ -591,8 +591,8 @@ function FamiliaScreen({ user, activeMember, transactions }) {
             <br/>Tú le debes a <b>Diego</b> <span style={{ color: T.red, fontWeight: 700 }}>$120</span> del taxi.
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button style={primaryBtn}>Saldar cuentas</button>
-            <button style={secondaryBtn}>+ Dividir gasto</button>
+            <button onClick={() => onAction && onAction('settle')} style={primaryBtn}>Saldar cuentas</button>
+            <button onClick={() => onAction && onAction('split')} style={secondaryBtn}>+ Dividir gasto</button>
           </div>
         </Card>
       </Section>
@@ -600,14 +600,14 @@ function FamiliaScreen({ user, activeMember, transactions }) {
       <Section title="Ajustes">
         <Card pad={0}>
           {[
-            { i: '🔔', l: 'Notificaciones',    s: 'Alertas, recordatorios' },
-            { i: '🎯', l: 'Presupuestos',      s: '8 categorías activas' },
-            { i: '🔁', l: 'Pagos recurrentes', s: '12 servicios' },
-            { i: '📤', l: 'Exportar a Excel',  s: 'CSV / XLSX' },
-            { i: '🌙', l: 'Apariencia',        s: 'Claro · Auto · Oscuro' },
-            { i: '🔒', l: 'Privacidad y datos',s: 'Bloqueo con Face ID' },
+            { i: '🔔', l: 'Notificaciones',    s: 'Alertas, recordatorios',   a: 'notificaciones' },
+            { i: '🎯', l: 'Presupuestos',      s: '8 categorías activas',     a: 'presupuestos' },
+            { i: '🔁', l: 'Pagos recurrentes', s: '12 servicios',             a: 'recurrentes' },
+            { i: '📤', l: 'Exportar a Excel',  s: 'CSV / XLSX',               a: 'exportar' },
+            { i: '🌙', l: 'Apariencia',        s: 'Claro · Auto · Oscuro',    a: 'apariencia' },
+            { i: '🔒', l: 'Privacidad y datos',s: 'Bloqueo con Face ID',      a: 'privacidad' },
           ].map((row, i, arr) => (
-            <div key={row.l} style={{
+            <div key={row.l} onClick={() => onAction && onAction(row.a)} style={{
               display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px',
               borderBottom: i < arr.length - 1 ? '1px solid ' + T.border : 'none',
               cursor: 'pointer',
@@ -662,10 +662,10 @@ function AddSheet({ open, onClose, defaultKind = 'gasto', onSave, openScan, pref
   ];
 
   const cats = kind === 'ingreso'
-    ? [...Object.entries(APP_DATA.incomeSources), ...(customSources || []).map(c => [c.id, c])]
+    ? Object.entries(APP_DATA.incomeSources)
     : kind === 'ahorro'
     ? (goals || APP_DATA.goals).map(g => [g.id, { name: g.name, icon: g.icon, color: g.color }])
-    : [...Object.entries(APP_DATA.categories), ...(customCats || []).map(c => [c.id, c])];
+    : Object.entries(APP_DATA.categories);
 
   const accent = kinds.find(k => k.id === kind).color;
 

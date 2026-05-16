@@ -143,13 +143,15 @@ function Donut({ segments, size = 168, thickness = 18, children }) {
 }
 
 // ─── Section title ───────────────────────────────────────────
-function Section({ title, action, children, gap = 12 }) {
+function Section({ title, action, onAction, children, gap = 12 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap }}>
       {(title || action) && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px' }}>
           <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: T.muted }}>{title}</div>
-          {action && <div style={{ fontSize: 13, fontWeight: 600, color: T.blue }}>{action}</div>}
+          {action && (
+            <div onClick={onAction} style={{ fontSize: 13, fontWeight: 600, color: T.blue, cursor: onAction ? 'pointer' : 'default' }}>{action}</div>
+          )}
         </div>
       )}
       {children}
