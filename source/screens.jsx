@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════
-function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, openAssistant, openReminders, accounts, openAccountCreator, goals }) {
+function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, openAssistant, openReminders, accounts, openAccountCreator, goals, activeMember, members, onSwitchMember }) {
   const m = monthOverride || { income: 0, expenses: 0, savings: 0, label: '' };
   const disponible = m.income - m.expenses - m.savings;
   const pctUsado = m.income > 0 ? Math.round(((m.expenses + m.savings) / m.income) * 100) : 0;
@@ -29,7 +29,23 @@ function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, op
             {user.name} <span style={{ fontSize: 20 }}>👋</span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Member switcher */}
+          {members && members.length > 1 && (
+            <div style={{ display: 'flex', gap: 4 }}>
+              {members.map(m => (
+                <button key={m.id} onClick={() => onSwitchMember && onSwitchMember(m)} style={{
+                  width: 36, height: 36, borderRadius: 18,
+                  background: m.color,
+                  border: activeMember && activeMember.id === m.id ? '2.5px solid ' + T.ink : '2px solid transparent',
+                  color: '#fff', fontWeight: 800, fontSize: 11,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  opacity: activeMember && activeMember.id !== m.id ? 0.45 : 1,
+                  transition: 'all 200ms',
+                }}>{m.initials}</button>
+              ))}
+            </div>
+          )}
           <button style={{ ...iconBtn, background: 'linear-gradient(135deg, #7048E8 0%, #3B5BDB 100%)', color: '#fff', border: 'none' }} onClick={openAssistant}>
             <span style={{ fontSize: 18 }}>✨</span>
           </button>
@@ -382,7 +398,7 @@ function TxRow({ t, last, activeMember, onDelete }) {
         <div style={{ fontSize: 15, fontWeight: 700, color, letterSpacing: -0.2 }}>
           {sign}{fmt(t.amount).replace('$', '$').replace('−', '')}
         </div>
-        {onDelete && (
+        {onDelete && isMine && (
           <button onClick={() => onDelete(t.id)} style={{
             border: 'none', background: 'transparent', cursor: 'pointer',
             color: T.muted, fontSize: 16, padding: '2px 4px', lineHeight: 1,
@@ -629,12 +645,19 @@ function FamiliaScreen({ user, activeMember, transactions, onAction }) {
 // ═══════════════════════════════════════════════════════════
 // ADD SHEET (modal)
 // ═══════════════════════════════════════════════════════════
-function AddSheet({ open, onClose, defaultKind = 'gasto', onSave, openScan, prefill, customCats, customSources, goals, onCreateCategory, activeMember }) {
+function AddSheet({ open, onClose, defaultKind = 'gasto', onSave, openScan, prefill, customCats, customSources, goals, accounts, onCreateCategory, activeMember }) {
   const [kind, setKind] = React.useState(defaultKind);
   const [amount, setAmount] = React.useState('');
   const [cat, setCat] = React.useState(null);
-  const [member, setMember] = React.useState(activeMember ? activeMember.name : 'Ulises');
+  const [account, setAccount] = React.useState(null);
+  const [member, setMember] = React.useState(activeMember ? activeMember.name : 'Yo');
   const [desc, setDesc] = React.useState('');
+
+  const firstCatFor = (k, gs) => {
+    if (k === 'ingreso') return Object.keys(APP_DATA.incomeSources)[0] ?? null;
+    if (k === 'ahorro') return (gs || [])[0]?.id ?? null;
+    return Object.keys(APP_DATA.categories)[0] ?? null;
+  };
 
   React.useEffect(() => {
     if (activeMember) setMember(activeMember.name);
@@ -644,14 +667,23 @@ function AddSheet({ open, onClose, defaultKind = 'gasto', onSave, openScan, pref
     if (open) {
       if (prefill) {
         setKind('gasto');
-        setAmount(String(prefill.total));
-        setCat(prefill.category);
-        setDesc(prefill.merchant);
+        setAmount(prefill.total > 0 ? String(prefill.total) : '');
+        setCat(prefill.category || firstCatFor('gasto', goals));
+        setDesc(prefill.merchant || '');
       } else {
-        setKind(defaultKind); setAmount(''); setCat(null); setDesc('');
+        setKind(defaultKind);
+        setAmount('');
+        setCat(firstCatFor(defaultKind, goals));
+        setDesc('');
       }
+      setAccount((accounts || [])[0]?.id ?? null);
     }
   }, [open, defaultKind, prefill]);
+
+  // Auto-select first category when kind changes
+  React.useEffect(() => {
+    if (open) setCat(firstCatFor(kind, goals));
+  }, [kind]);
 
   if (!open) return null;
 
@@ -664,7 +696,7 @@ function AddSheet({ open, onClose, defaultKind = 'gasto', onSave, openScan, pref
   const cats = kind === 'ingreso'
     ? Object.entries(APP_DATA.incomeSources)
     : kind === 'ahorro'
-    ? (goals || APP_DATA.goals).map(g => [g.id, { name: g.name, icon: g.icon, color: g.color }])
+    ? (goals || []).map(g => [g.id, { name: g.name, icon: g.icon, color: g.color }])
     : Object.entries(APP_DATA.categories);
 
   const accent = kinds.find(k => k.id === kind).color;
@@ -711,7 +743,7 @@ function AddSheet({ open, onClose, defaultKind = 'gasto', onSave, openScan, pref
         {/* Kind selector */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
           {kinds.map(k => (
-            <button key={k.id} onClick={() => { setKind(k.id); setCat(null); }} style={{
+            <button key={k.id} onClick={() => setKind(k.id)} style={{
               flex: 1, border: '1.5px solid ' + (kind === k.id ? k.color : T.border),
               background: kind === k.id ? k.color + '14' : '#fff',
               color: kind === k.id ? k.color : T.ink2,
@@ -802,6 +834,39 @@ function AddSheet({ open, onClose, defaultKind = 'gasto', onSave, openScan, pref
           <div style={{ fontSize: 14, color: T.muted }}>🔒</div>
         </div>
 
+        {/* Account selector */}
+        {(accounts && accounts.length > 0) && (
+          <>
+            <div style={{ fontSize: 12, fontWeight: 700, color: T.muted, letterSpacing: 0.6, textTransform: 'uppercase', padding: '0 4px 10px' }}>
+              Cuenta de pago
+            </div>
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 16, paddingBottom: 4 }}>
+              {accounts.map(a => (
+                <button key={a.id} onClick={() => setAccount(a.id)} style={{
+                  flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '10px 14px', borderRadius: 14,
+                  border: '1.5px solid ' + (account === a.id ? a.color : T.border),
+                  background: account === a.id ? a.color + '14' : '#fff',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, background: a.color, color: '#fff', fontWeight: 800, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{a.logo}</div>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: account === a.id ? a.color : T.ink }}>{a.name}</div>
+                    <div style={{ fontSize: 10.5, color: T.muted }}>{a.type}</div>
+                  </div>
+                </button>
+              ))}
+              <button onClick={() => setAccount(null)} style={{
+                flexShrink: 0, padding: '10px 14px', borderRadius: 14,
+                border: '1.5px solid ' + (account === null ? T.ink : T.border),
+                background: account === null ? T.soft : '#fff',
+                cursor: 'pointer', fontFamily: 'inherit',
+                fontSize: 12, fontWeight: 600, color: T.muted,
+              }}>Sin cuenta</button>
+            </div>
+          </>
+        )}
+
         {/* Description */}
         <input
           value={desc}
@@ -818,7 +883,7 @@ function AddSheet({ open, onClose, defaultKind = 'gasto', onSave, openScan, pref
 
         <button
           disabled={!canSave}
-          onClick={() => { onSave({ kind, amount: Number(amount), cat, member, desc }); }}
+          onClick={() => { onSave({ kind, amount: Number(amount), cat, member, desc, account }); }}
           style={{
             width: '100%', border: 'none', cursor: canSave ? 'pointer' : 'not-allowed',
             background: canSave ? accent : T.soft,
