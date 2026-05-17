@@ -110,17 +110,27 @@ function App() {
     return { ...totals, label: getCurrentMonthLabel() };
   }, [txs, activeMember]);
 
-  // Live account balances — initial balance adjusted by all transactions
+  // Live account balances — filtered by owner, initial balance adjusted by transactions
   const liveAccounts = React.useMemo(() => {
-    return accounts.map(a => {
-      const delta = txs.reduce((sum, t) => {
-        if (t.account !== a.id) return sum;
-        if (t.kind === 'ingreso') return sum + t.amount;
-        return sum - t.amount; // gasto y ahorro restan del saldo
-      }, 0);
-      return { ...a, balance: a.balance + delta };
-    });
-  }, [accounts, txs]);
+    const isFamilia = activeMember?.id === 'familia';
+    return accounts
+      .filter(a => isFamilia || !a.owner || a.owner === activeMember?.id)
+      .map(a => {
+        const delta = txs.reduce((sum, t) => {
+          if (t.account !== a.id) return sum;
+          if (t.kind === 'ingreso') return sum + t.amount;
+          return sum - t.amount;
+        }, 0);
+        return { ...a, balance: a.balance + delta };
+      });
+  }, [accounts, txs, activeMember]);
+
+  // Total liquid balance for hero card
+  const totalBalance = React.useMemo(() =>
+    liveAccounts
+      .filter(a => a.type !== 'Crédito' && a.type !== 'Inversión')
+      .reduce((s, a) => s + a.balance, 0)
+  , [liveAccounts]);
 
   // ── Helpers ────────────────────────────────────────────────
   const showToast = (msg, color) => {
@@ -203,7 +213,7 @@ function App() {
     screen = <DashboardScreen
       user={{ name: activeMember?.name || '' }}
       goTab={setTab} openAdd={openAdd}
-      monthOverride={month} accounts={liveAccounts} goals={goals}
+      monthOverride={month} accounts={liveAccounts} goals={goals} totalBalance={totalBalance}
       openAccounts={() => setAccountsOpen(true)}
       openAccountCreator={() => setAccCreatorOpen(true)}
       openAssistant={() => setAssistantOpen(true)}
@@ -288,7 +298,7 @@ function App() {
                        onResult={(e) => { setAddPrefill(e); setAddKind('gasto'); setAddOpen(true); setScanOpen(false); }} />
 
       <CategoryCreator open={catCreatorOpen} onClose={() => setCatCreatorOpen(false)} kind={catCreatorKind} onCreate={onCategoryCreated} />
-      <AccountCreator  open={accCreatorOpen} onClose={() => setAccCreatorOpen(false)} onCreate={onAccountCreated} />
+      <AccountCreator  open={accCreatorOpen} onClose={() => setAccCreatorOpen(false)} onCreate={onAccountCreated} activeMember={activeMember} />
     </div>
   );
 }

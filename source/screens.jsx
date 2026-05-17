@@ -3,9 +3,10 @@
 // ═══════════════════════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════
-function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, openAssistant, openReminders, accounts, openAccountCreator, goals, activeMember, members, onSwitchMember }) {
+function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, openAssistant, openReminders, accounts, openAccountCreator, goals, activeMember, members, onSwitchMember, totalBalance }) {
   const m = monthOverride || { income: 0, expenses: 0, savings: 0, label: '' };
-  const disponible = m.income - m.expenses - m.savings;
+  const hasAccounts = accounts && accounts.length > 0;
+  const disponible = hasAccounts ? totalBalance || 0 : m.income - m.expenses - m.savings;
   const pctUsado = m.income > 0 ? Math.round(((m.expenses + m.savings) / m.income) * 100) : 0;
 
   const segments = [
@@ -67,7 +68,7 @@ function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, op
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
           <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>
-            Disponible · {m.label}
+            {hasAccounts ? 'Saldo en cuentas' : 'Disponible'} · {m.label}
           </div>
           <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.7)', padding: '4px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.1)' }}>
             {pctUsado}% usado
