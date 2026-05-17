@@ -73,7 +73,10 @@ function App() {
     return stored.map(a => a.owner ? a : { ...a, owner: APP_DATA.members[0].id });
   });
   const [goals, setGoals]       = React.useState(() => loadLS('goals', []));
-  const [txs, setTxs]           = React.useState(() => loadLS('transactions', []));
+  const [txs, setTxs]           = React.useState(() => {
+    const stored = loadLS('transactions', []);
+    return stored.map(t => t.who === 'Esposa' ? { ...t, who: 'Ale' } : t);
+  });
 
   const [customCats, setCustomCats] = React.useState(() => {
     const cats = loadLS('customCats', []);
@@ -125,9 +128,20 @@ function App() {
           if (t.kind === 'ingreso') return sum + t.amount;
           return sum - t.amount;
         }, 0);
-        return { ...a, balance: a.balance + delta };
+        return { ...a, balance: a.balance + delta, _delta: delta, _initialBalance: a.balance };
       });
   }, [accounts, txs, activeMember]);
+
+  const allLiveAccounts = React.useMemo(() =>
+    accounts.map(a => {
+      const delta = txs.reduce((sum, t) => {
+        if (t.account !== a.id) return sum;
+        if (t.kind === 'ingreso') return sum + t.amount;
+        return sum - t.amount;
+      }, 0);
+      return { ...a, balance: a.balance + delta, _delta: delta, _initialBalance: a.balance };
+    })
+  , [accounts, txs]);
 
   // Total liquid balance for hero card
   const totalBalance = React.useMemo(() =>
@@ -204,6 +218,15 @@ function App() {
   const handleDeleteTx = (id) => {
     setTxs(prev => prev.filter(t => t.id !== id));
     showToast('Movimiento eliminado', T.muted);
+  };
+
+  const handleDeleteAccount = (id) => {
+    setAccounts(prev => prev.filter(a => a.id !== id));
+    showToast('Cuenta eliminada', T.muted);
+  };
+  const handleEditAccount = (id, newInitialBalance) => {
+    setAccounts(prev => prev.map(a => a.id === id ? { ...a, balance: newInitialBalance } : a));
+    showToast('Saldo actualizado', T.green);
   };
 
   const switchMember = (m) => {
@@ -289,13 +312,13 @@ function App() {
         customCats={customCats}
         customSources={customSources}
         goals={goals}
-        accounts={accounts}
+        accounts={liveAccounts}
         activeMember={activeMember}
         onCreateCategory={(kind) => { setCatCreatorKind(kind); setCatCreatorOpen(true); }}
         onSave={handleSave}
       />
 
-      <AccountsModal   open={accountsOpen}   onClose={() => setAccountsOpen(false)} accounts={liveAccounts} onCreate={() => setAccCreatorOpen(true)} />
+      <AccountsModal open={accountsOpen} onClose={() => setAccountsOpen(false)} accounts={activeMember?.id === 'familia' ? allLiveAccounts : liveAccounts} onCreate={() => setAccCreatorOpen(true)} onDelete={handleDeleteAccount} onEdit={handleEditAccount} activeMember={activeMember} />
       <RemindersModal  open={remindersOpen}  onClose={() => setRemindersOpen(false)} />
       <AssistantModal  open={assistantOpen}  onClose={() => setAssistantOpen(false)} />
       <ScanModal       open={scanOpen}       onClose={() => setScanOpen(false)}
