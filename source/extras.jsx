@@ -684,42 +684,76 @@ function ScanModal({ open, onClose, onResult }) {
 // ═══════════════════════════════════════════════════════════
 // REMINDERS
 // ═══════════════════════════════════════════════════════════
-function RemindersModal({ open, onClose }) {
-  const [rems, setRems] = React.useState(APP_DATA.reminders);
-  const [pushAll, setPushAll]   = React.useState(true);
-  const [emailAll, setEmailAll] = React.useState(false);
-  const [whatsapp, setWhatsapp] = React.useState(false);
-  const [days, setDays] = React.useState(2);
+function RemindersModal({ open, onClose, dailyReminder, onSetDailyReminder }) {
+  const [notifPerm, setNotifPerm] = React.useState(
+    typeof Notification !== 'undefined' ? Notification.permission : 'denied'
+  );
 
   if (!open) return null;
 
+  const HOURS = [7, 8, 9, 12, 18, 20, 21, 22];
+  const fmtHour = h => {
+    const suffix = h < 12 ? 'am' : 'pm';
+    const display = h > 12 ? h - 12 : h;
+    return display + suffix;
+  };
+
+  const toggleEnabled = async () => {
+    if (!dailyReminder.enabled) {
+      // Request permission before enabling
+      if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+        const perm = await Notification.requestPermission();
+        setNotifPerm(perm);
+        if (perm !== 'granted') return;
+      }
+      onSetDailyReminder(r => ({ ...r, enabled: true }));
+    } else {
+      onSetDailyReminder(r => ({ ...r, enabled: false }));
+    }
+  };
+
   return (
     <FullSheet onClose={onClose} title="Recordatorios">
-      <Card pad={18} style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 4 }}>Canales</div>
-        <div style={{ fontSize: 12, color: T.muted, marginBottom: 14 }}>Cómo te avisamos antes de un pago</div>
-        <SwitchRow icon="🔔" label="Notificación push" value={pushAll} onChange={setPushAll} />
-        <SwitchRow icon="✉️" label="Email a ulises@…" value={emailAll} onChange={setEmailAll} />
-        <SwitchRow icon="💬" label="WhatsApp" value={whatsapp} onChange={setWhatsapp} last />
-      </Card>
 
+      {/* Daily reminder card */}
       <Card pad={18} style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 10 }}>Avisarme con anticipación</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {[0, 1, 2, 3, 5, 7].map(d => (
-            <button key={d} onClick={() => setDays(d)} style={{
-              flex: 1, padding: '10px 4px', borderRadius: 12,
-              border: '1.5px solid ' + (days === d ? T.ink : T.border),
-              background: days === d ? T.ink : '#fff',
-              color: days === d ? '#fff' : T.ink2,
-              fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit',
-            }}>{d === 0 ? 'Mismo día' : d + 'd'}</button>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>📝 Recordatorio diario</div>
+            <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>Aviso para registrar tus gastos del día</div>
+          </div>
+          <SwitchRow icon="" label="" value={dailyReminder.enabled} onChange={toggleEnabled} last hideLabel />
         </div>
+
+        {notifPerm === 'denied' && (
+          <div style={{ fontSize: 11.5, color: T.red, background: T.redSoft, borderRadius: 8, padding: '8px 10px', marginTop: 8 }}>
+            Las notificaciones están bloqueadas en tu navegador. Actívalas en Configuración del sitio.
+          </div>
+        )}
+
+        {dailyReminder.enabled && notifPerm === 'granted' && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: T.muted, letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 8 }}>Hora del recordatorio</div>
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+              {HOURS.map(h => (
+                <button key={h} onClick={() => onSetDailyReminder(r => ({ ...r, hour: h }))} style={{
+                  padding: '8px 12px', borderRadius: 10,
+                  border: '1.5px solid ' + (dailyReminder.hour === h ? T.ink : T.border),
+                  background: dailyReminder.hour === h ? T.ink : '#fff',
+                  color: dailyReminder.hour === h ? '#fff' : T.ink2,
+                  fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit',
+                }}>{fmtHour(h)}</button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11.5, color: T.muted, marginTop: 10 }}>
+              Recibirás una notificación cada día a las {fmtHour(dailyReminder.hour)} mientras la app esté abierta.
+            </div>
+          </div>
+        )}
       </Card>
 
-      <Section title="Próximos recordatorios">
-        {rems.map(r => (
+      <Section title="Próximos pagos">
+        {APP_DATA.reminders.map(r => (
           <Card key={r.id} pad={14} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
             <div style={{
               width: 42, height: 42, borderRadius: 12, background: T.soft,
@@ -742,14 +776,14 @@ function RemindersModal({ open, onClose }) {
   );
 }
 
-function SwitchRow({ icon, label, value, onChange, last }) {
+function SwitchRow({ icon, label, value, onChange, last, hideLabel }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 12,
-      padding: '10px 0', borderBottom: last ? 'none' : '1px solid ' + T.border,
+      padding: hideLabel ? '0' : '10px 0', borderBottom: (last || hideLabel) ? 'none' : '1px solid ' + T.border,
     }}>
-      <div style={{ fontSize: 18 }}>{icon}</div>
-      <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: T.ink }}>{label}</div>
+      {!hideLabel && <div style={{ fontSize: 18 }}>{icon}</div>}
+      {!hideLabel && <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: T.ink }}>{label}</div>}
       <button onClick={() => onChange(!value)} style={{
         width: 46, height: 28, borderRadius: 14,
         background: value ? T.green : T.soft,

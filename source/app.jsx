@@ -108,6 +108,9 @@ function App() {
     srcs.forEach(s => { APP_DATA.incomeSources[s.id] = { name: s.name, icon: s.icon, color: s.color }; });
     return srcs;
   });
+  const [dailyReminder, setDailyReminder] = React.useState(() =>
+    loadLS('dailyReminder', { enabled: false, hour: 21 })
+  );
 
   // Persist on change (localStorage as offline fallback)
   React.useEffect(() => { saveLS('transactions', txs); }, [txs]);
@@ -117,6 +120,34 @@ function App() {
   React.useEffect(() => { saveLS('customSources', customSources); }, [customSources]);
   React.useEffect(() => { saveLS('upcoming', upcoming); }, [upcoming]);
   React.useEffect(() => { saveLS('budgets', budgets); }, [budgets]);
+  React.useEffect(() => { saveLS('dailyReminder', dailyReminder); }, [dailyReminder]);
+
+  // Daily notification: fire once per day at the configured hour
+  React.useEffect(() => {
+    if (!dailyReminder.enabled) return;
+    const tick = setInterval(() => {
+      const now = new Date();
+      if (now.getHours() === dailyReminder.hour && now.getMinutes() === 0) {
+        if (Notification.permission === 'granted') {
+          new Notification('¿Ya registraste tus gastos hoy? 💸', {
+            body: 'Toca para abrir Gastos Familia y anotar tus movimientos.',
+            icon: 'https://ulises-85952022.github.io/gastos-familia/icon.png',
+          });
+        }
+      }
+    }, 60000);
+    return () => clearInterval(tick);
+  }, [dailyReminder]);
+
+  // In-app nudge on open: show if no expense registered today (after noon)
+  React.useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const hour  = new Date().getHours();
+    const hasToday = txs.some(t => t.date === today);
+    if (!hasToday && hour >= 12) {
+      setTimeout(() => showToast('📝 No has registrado movimientos hoy', T.gold), 1200);
+    }
+  }, []);
 
   // ── Firebase real-time sync ────────────────────────────────
   const fbReady     = React.useRef(false);
@@ -131,6 +162,7 @@ function App() {
       setGoals(remote.goals || []);
       if (remote.upcoming) setUpcoming(remote.upcoming);
       if (remote.budgets) setBudgets(remote.budgets.map(b => ({ cat: b.cat, limit: b.limit || 0 })));
+      if (remote.dailyReminder) setDailyReminder(remote.dailyReminder);
       if (remote.customCats) {
         remote.customCats.forEach(c => { APP_DATA.categories[c.id] = { name: c.name, icon: c.icon, color: c.color }; });
         setCustomCats(remote.customCats);
@@ -142,7 +174,7 @@ function App() {
       setTimeout(() => { fbReceiving.current = false; fbReady.current = true; }, 500);
     }
 
-    const snap0 = { txs, accounts, goals, customCats, customSources, upcoming, budgets };
+    const snap0 = { txs, accounts, goals, customCats, customSources, upcoming, budgets, dailyReminder };
     const hasLocalData = snap0.txs.length > 0 || snap0.accounts.length > 0;
 
     const es = new EventSource(FB + '.json?accept=text/event-stream');
@@ -175,13 +207,9 @@ function App() {
   // Debounced save — 1 s after any data change
   React.useEffect(() => {
     if (!fbReady.current || fbReceiving.current) return;
-<<<<<<< HEAD
-    const timer = setTimeout(() => fbSave({ txs, accounts, goals, customCats, customSources, upcoming, budgets }), 800);
-=======
-    const timer = setTimeout(() => fbSave({ txs, accounts, goals, customCats, customSources }), 1000);
->>>>>>> 0824461 (Fix Firebase sync race condition and add connection status indicator)
+    const timer = setTimeout(() => fbSave({ txs, accounts, goals, customCats, customSources, upcoming, budgets, dailyReminder }), 1000);
     return () => clearTimeout(timer);
-  }, [txs, accounts, goals, customCats, customSources, upcoming, budgets]);
+  }, [txs, accounts, goals, customCats, customSources, upcoming, budgets, dailyReminder]);
 
   const [activeMember, setActiveMember] = React.useState(
     () => {
@@ -485,7 +513,7 @@ function App() {
       />
 
       <AccountsModal open={accountsOpen} onClose={() => setAccountsOpen(false)} accounts={activeMember?.id === 'familia' ? allLiveAccounts : liveAccounts} onCreate={() => setAccCreatorOpen(true)} onDelete={handleDeleteAccount} onEdit={handleEditAccount} activeMember={activeMember} />
-      <RemindersModal  open={remindersOpen}  onClose={() => setRemindersOpen(false)} />
+      <RemindersModal  open={remindersOpen}  onClose={() => setRemindersOpen(false)} dailyReminder={dailyReminder} onSetDailyReminder={setDailyReminder} />
       <UpcomingModal   open={upcomingOpen}   onClose={() => setUpcomingOpen(false)} upcoming={upcoming} onPay={handlePayUpcoming} onSave={handleSaveUpcoming} onDelete={handleDeleteUpcoming} activeMember={activeMember} />
       <PresupuestosModal open={budgetsOpen} onClose={() => setBudgetsOpen(false)} budgets={liveBudgets} onSave={handleSaveBudget} onDelete={handleDeleteBudget} />
       <AssistantModal  open={assistantOpen}  onClose={() => setAssistantOpen(false)} />
