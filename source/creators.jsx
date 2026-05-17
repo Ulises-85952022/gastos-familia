@@ -170,7 +170,7 @@ function CategoryCreator({ open, onClose, kind, onCreate }) {
 // ═══════════════════════════════════════════════════════════
 // ACCOUNT CREATOR
 // ═══════════════════════════════════════════════════════════
-function AccountCreator({ open, onClose, onCreate }) {
+function AccountCreator({ open, onClose, onCreate, activeMember }) {
   const [type, setType] = React.useState('Débito');
   const [name, setName] = React.useState('');
   const [mask, setMask] = React.useState('');
@@ -297,6 +297,7 @@ function AccountCreator({ open, onClose, onCreate }) {
               balance: isCredit ? -Math.abs(Number(balance)) : Number(balance),
               limit: isCredit && limit ? Number(limit) : undefined,
               color, logo, brand: name.trim().split(' ')[0],
+              owner: activeMember?.id || APP_DATA.members[0].id,
             });
             onClose();
           }}
