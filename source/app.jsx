@@ -67,7 +67,11 @@ function App() {
   const [toast, setToast] = React.useState(null);
 
   // Persistent state — loaded from localStorage on first render
-  const [accounts, setAccounts] = React.useState(() => loadLS('accounts', []));
+  const [accounts, setAccounts] = React.useState(() => {
+    const stored = loadLS('accounts', []);
+    // Migrate: assign owner to accounts that don't have one
+    return stored.map(a => a.owner ? a : { ...a, owner: APP_DATA.members[0].id });
+  });
   const [goals, setGoals]       = React.useState(() => loadLS('goals', []));
   const [txs, setTxs]           = React.useState(() => loadLS('transactions', []));
 
@@ -114,7 +118,7 @@ function App() {
   const liveAccounts = React.useMemo(() => {
     const isFamilia = activeMember?.id === 'familia';
     return accounts
-      .filter(a => isFamilia || !a.owner || a.owner === activeMember?.id)
+      .filter(a => isFamilia || a.owner === activeMember?.id)
       .map(a => {
         const delta = txs.reduce((sum, t) => {
           if (t.account !== a.id) return sum;
