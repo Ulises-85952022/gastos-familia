@@ -75,55 +75,62 @@ function shade(hex, amt) {
 }
 
 // Full-screen Accounts modal
-function AccountsModal({ open, onClose, accounts, onCreate }) {
+function AccountsModal({ open, onClose, accounts, onCreate, onDelete, onEdit, activeMember }) {
   if (!open) return null;
-  const accs = accounts || APP_DATA.accounts;
+  const accs = accounts || [];
   const patrimonio = accs.reduce((s, a) => s + a.balance, 0);
-
   return (
     <FullSheet onClose={onClose} title="Cuentas">
-      <Card pad={20} style={{
-        background: 'linear-gradient(150deg, #1A1815 0%, #2A2521 70%, #3A332B 100%)',
-        color: '#fff', border: 'none', marginBottom: 18,
-      }}>
+      <Card pad={20} style={{ background: 'linear-gradient(150deg, #1A1815 0%, #2A2521 70%, #3A332B 100%)', color: '#fff', border: 'none', marginBottom: 18 }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>Patrimonio total</div>
         <div style={{ fontFamily: 'inherit', fontWeight: 500, fontSize: 44, lineHeight: 1, marginTop: 4, letterSpacing: -1 }}>{fmt(patrimonio)}</div>
-        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 6 }}>{accs.length} cuentas vinculadas · Actualizado ahora</div>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 6 }}>{accs.length} cuentas · Actualizado ahora</div>
       </Card>
-
-      <Section title="Activos" gap={10}>
-        {accs.filter(a => a.balance >= 0).map(a => <AccountRow key={a.id} a={a} />)}
+      <Section title="Activos">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {accs.filter(a => a.balance >= 0).map(a => <AccountRow key={a.id} a={a} onDelete={onDelete} onEdit={onEdit} activeMember={activeMember} />)}
+        </div>
       </Section>
-
       <div style={{ height: 14 }} />
-
-      <Section title="Pasivos" gap={10}>
-        {accs.filter(a => a.balance < 0).map(a => <AccountRow key={a.id} a={a} />)}
+      <Section title="Pasivos">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {accs.filter(a => a.balance < 0).map(a => <AccountRow key={a.id} a={a} onDelete={onDelete} onEdit={onEdit} activeMember={activeMember} />)}
+        </div>
       </Section>
-
-      <button onClick={onCreate} style={{
-        marginTop: 18, width: '100%',
-        border: '1.5px dashed ' + T.border, background: 'transparent',
-        padding: '16px', borderRadius: 16, fontSize: 14, fontWeight: 700,
-        color: T.ink2, cursor: 'pointer', fontFamily: 'inherit',
-      }}>+ Vincular nueva cuenta</button>
+      <button onClick={onCreate} style={{ marginTop: 18, width: '100%', border: '1.5px dashed ' + T.border, background: 'transparent', padding: '16px', borderRadius: 16, fontSize: 14, fontWeight: 700, color: T.ink2, cursor: 'pointer', fontFamily: 'inherit' }}>+ Vincular nueva cuenta</button>
     </FullSheet>
   );
 }
 
-function AccountRow({ a }) {
+function AccountRow({ a, onDelete, onEdit, activeMember }) {
+  const [editing, setEditing] = React.useState(false);
+  const [editVal, setEditVal] = React.useState('');
   const isCredit = a.type === 'Crédito';
-  const pctUsed = isCredit ? Math.min(100, Math.abs(a.balance) / a.limit * 100) : 0;
+  const pctUsed = isCredit ? Math.min(100, Math.abs(a.balance) / (a.limit || 1) * 100) : 0;
+  const isFamiliaView = activeMember?.id === 'familia';
+  const ownerMember = APP_DATA.members.find(m => m.id === a.owner);
+
+  const startEdit = () => {
+    setEditVal(String(Math.abs(a._initialBalance ?? a.balance)));
+    setEditing(true);
+  };
+  const saveEdit = () => {
+    const newVal = Number(editVal);
+    if (onEdit && newVal >= 0) onEdit(a.id, isCredit ? -newVal : newVal);
+    setEditing(false);
+  };
+
   return (
     <Card pad={14} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-      <div style={{
-        width: 44, height: 44, borderRadius: 12,
-        background: a.color, color: '#fff', fontWeight: 800, fontSize: 16,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>{a.logo}</div>
+      <div style={{ width: 44, height: 44, borderRadius: 12, background: a.color, color: '#fff', fontWeight: 800, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{a.logo}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 700, color: T.ink }}>{a.name}</div>
-        <div style={{ fontSize: 11.5, color: T.muted, marginTop: 1 }}>{a.type} {a.mask}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 700, color: T.ink }}>{a.name}</div>
+          {isFamiliaView && ownerMember && (
+            <div style={{ fontSize: 9, fontWeight: 800, color: '#fff', background: ownerMember.color, padding: '2px 5px', borderRadius: 4 }}>{ownerMember.initials}</div>
+          )}
+        </div>
+        <div style={{ fontSize: 11.5, color: T.muted, marginTop: 1 }}>{a.type}{a.mask ? ' ' + a.mask : ''}</div>
         {isCredit && (
           <div style={{ marginTop: 6 }}>
             <div style={{ height: 4, background: T.soft, borderRadius: 2, overflow: 'hidden' }}>
@@ -133,12 +140,28 @@ function AccountRow({ a }) {
           </div>
         )}
       </div>
-      <div style={{ textAlign: 'right' }}>
-        <div style={{
-          fontSize: 15, fontWeight: 700,
-          color: a.balance < 0 ? T.red : T.ink,
-          letterSpacing: -0.2,
-        }}>{a.balance < 0 ? '−' : ''}{fmt(Math.abs(a.balance))}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+        {editing ? (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input
+              autoFocus
+              value={editVal}
+              onChange={e => setEditVal(e.target.value.replace(/[^\d.]/g, ''))}
+              onKeyDown={e => e.key === 'Enter' && saveEdit()}
+              style={{ width: 88, fontSize: 13, fontWeight: 700, textAlign: 'right', border: '1.5px solid ' + T.blue, borderRadius: 8, padding: '4px 8px', fontFamily: 'inherit' }}
+            />
+            <button onClick={saveEdit} style={{ border: 'none', background: T.blue, color: '#fff', borderRadius: 8, padding: '4px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
+            <button onClick={() => setEditing(false)} style={{ border: 'none', background: T.soft, color: T.ink, borderRadius: 8, padding: '4px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>✕</button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: a.balance < 0 ? T.red : T.ink, letterSpacing: -0.2 }}>{a.balance < 0 ? '−' : ''}{fmt(Math.abs(a.balance))}</div>
+            {onEdit && <button onClick={startEdit} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 14, padding: '2px 3px', lineHeight: 1, color: T.muted }}>✏️</button>}
+          </div>
+        )}
+        {onDelete && (
+          <button onClick={() => onDelete(a.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 11, color: T.muted, padding: '0', fontFamily: 'inherit', textDecoration: 'underline' }}>Eliminar</button>
+        )}
       </div>
     </Card>
   );

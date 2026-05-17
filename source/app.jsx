@@ -1,4 +1,14 @@
-// Root app — full-screen, localStorage persistence
+// Root app — full-screen, localStorage + Firebase persistence
+
+// ── Firebase REST helpers ─────────────────────────────────────
+const FB = 'https://app-familiae-default-rtdb.firebaseio.com/data';
+function fbSave(payload) {
+  fetch(FB + '.json', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).catch(() => {});
+}
 
 // ── localStorage helpers ─────────────────────────────────────
 function loadLS(key, fallback) {
@@ -73,7 +83,10 @@ function App() {
     return stored.map(a => a.owner ? a : { ...a, owner: APP_DATA.members[0].id });
   });
   const [goals, setGoals]       = React.useState(() => loadLS('goals', []));
-  const [txs, setTxs]           = React.useState(() => loadLS('transactions', []));
+  const [txs, setTxs]           = React.useState(() => {
+    const stored = loadLS('transactions', []);
+    return stored.map(t => t.who === 'Esposa' ? { ...t, who: 'Ale' } : t);
+  });
 
   const [customCats, setCustomCats] = React.useState(() => {
     const cats = loadLS('customCats', []);
@@ -86,12 +99,54 @@ function App() {
     return srcs;
   });
 
-  // Persist on change
+  // Persist on change (localStorage as offline fallback)
   React.useEffect(() => { saveLS('transactions', txs); }, [txs]);
   React.useEffect(() => { saveLS('accounts', accounts); }, [accounts]);
   React.useEffect(() => { saveLS('goals', goals); }, [goals]);
   React.useEffect(() => { saveLS('customCats', customCats); }, [customCats]);
   React.useEffect(() => { saveLS('customSources', customSources); }, [customSources]);
+
+  // ── Firebase real-time sync ────────────────────────────────
+  const fbReady     = React.useRef(false);
+  const fbReceiving = React.useRef(false);
+
+  React.useEffect(() => {
+    function applyRemote(remote) {
+      if (!remote) { fbReady.current = true; return; }
+      fbReceiving.current = true;
+      setTxs((remote.txs || []).map(t => t.who === 'Esposa' ? { ...t, who: 'Ale' } : t));
+      setAccounts((remote.accounts || []).map(a => a.owner ? a : { ...a, owner: APP_DATA.members[0].id }));
+      setGoals(remote.goals || []);
+      if (remote.customCats) {
+        remote.customCats.forEach(c => { APP_DATA.categories[c.id] = { name: c.name, icon: c.icon, color: c.color }; });
+        setCustomCats(remote.customCats);
+      }
+      if (remote.customSources) {
+        remote.customSources.forEach(s => { APP_DATA.incomeSources[s.id] = { name: s.name, icon: s.icon, color: s.color }; });
+        setCustomSources(remote.customSources);
+      }
+      setTimeout(() => { fbReceiving.current = false; fbReady.current = true; }, 300);
+    }
+
+    const snap0 = { txs, accounts, goals, customCats, customSources };
+    const es = new EventSource(FB + '.json?accept=text/event-stream');
+    es.addEventListener('put', e => {
+      try {
+        const d = JSON.parse(e.data);
+        if (!d.data) { fbSave(snap0); fbReady.current = true; }
+        else applyRemote(d.data);
+      } catch { fbReady.current = true; }
+    });
+    es.onerror = () => { fbReady.current = true; };
+    return () => es.close();
+  }, []);
+
+  // Debounced save — 800 ms after any data change
+  React.useEffect(() => {
+    if (!fbReady.current || fbReceiving.current) return;
+    const timer = setTimeout(() => fbSave({ txs, accounts, goals, customCats, customSources }), 800);
+    return () => clearTimeout(timer);
+  }, [txs, accounts, goals, customCats, customSources]);
 
   const [activeMember, setActiveMember] = React.useState(
     () => {
@@ -125,9 +180,20 @@ function App() {
           if (t.kind === 'ingreso') return sum + t.amount;
           return sum - t.amount;
         }, 0);
-        return { ...a, balance: a.balance + delta };
+        return { ...a, balance: a.balance + delta, _delta: delta, _initialBalance: a.balance };
       });
   }, [accounts, txs, activeMember]);
+
+  const allLiveAccounts = React.useMemo(() =>
+    accounts.map(a => {
+      const delta = txs.reduce((sum, t) => {
+        if (t.account !== a.id) return sum;
+        if (t.kind === 'ingreso') return sum + t.amount;
+        return sum - t.amount;
+      }, 0);
+      return { ...a, balance: a.balance + delta, _delta: delta, _initialBalance: a.balance };
+    })
+  , [accounts, txs]);
 
   // Total liquid balance for hero card
   const totalBalance = React.useMemo(() =>
@@ -204,6 +270,15 @@ function App() {
   const handleDeleteTx = (id) => {
     setTxs(prev => prev.filter(t => t.id !== id));
     showToast('Movimiento eliminado', T.muted);
+  };
+
+  const handleDeleteAccount = (id) => {
+    setAccounts(prev => prev.filter(a => a.id !== id));
+    showToast('Cuenta eliminada', T.muted);
+  };
+  const handleEditAccount = (id, newInitialBalance) => {
+    setAccounts(prev => prev.map(a => a.id === id ? { ...a, balance: newInitialBalance } : a));
+    showToast('Saldo actualizado', T.green);
   };
 
   const switchMember = (m) => {
@@ -289,13 +364,13 @@ function App() {
         customCats={customCats}
         customSources={customSources}
         goals={goals}
-        accounts={accounts}
+        accounts={liveAccounts}
         activeMember={activeMember}
         onCreateCategory={(kind) => { setCatCreatorKind(kind); setCatCreatorOpen(true); }}
         onSave={handleSave}
       />
 
-      <AccountsModal   open={accountsOpen}   onClose={() => setAccountsOpen(false)} accounts={liveAccounts} onCreate={() => setAccCreatorOpen(true)} />
+      <AccountsModal open={accountsOpen} onClose={() => setAccountsOpen(false)} accounts={activeMember?.id === 'familia' ? allLiveAccounts : liveAccounts} onCreate={() => setAccCreatorOpen(true)} onDelete={handleDeleteAccount} onEdit={handleEditAccount} activeMember={activeMember} />
       <RemindersModal  open={remindersOpen}  onClose={() => setRemindersOpen(false)} />
       <AssistantModal  open={assistantOpen}  onClose={() => setAssistantOpen(false)} />
       <ScanModal       open={scanOpen}       onClose={() => setScanOpen(false)}
