@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════
-function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, openAssistant, openReminders, accounts, openAccountCreator, goals, activeMember, members, onSwitchMember, totalBalance }) {
+function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, openAssistant, openReminders, openUpcoming, accounts, openAccountCreator, goals, activeMember, members, onSwitchMember, totalBalance, upcoming, onPayUpcoming }) {
   const m = monthOverride || { income: 0, expenses: 0, savings: 0, label: '' };
   const hasAccounts = accounts && accounts.length > 0;
   const disponible = hasAccounts ? totalBalance || 0 : m.income - m.expenses - m.savings;
@@ -18,7 +18,7 @@ function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, op
   const topCats = [...APP_DATA.budgets]
     .sort((a,b) => b.spent - a.spent).slice(0, 4);
 
-  const next3 = APP_DATA.upcoming.slice(0, 3);
+  const next3 = (upcoming || []).filter(p => !p.paid).slice(0, 3);
 
   return (
     <div style={{ padding: '0 18px 120px', display: 'flex', flexDirection: 'column', gap: 22 }}>
@@ -180,28 +180,55 @@ function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, op
       </Card>
 
       {/* Próximos pagos */}
-      <Section title="Próximos pagos" action="Ver todo">
-        <Card pad={0}>
-          {next3.map((p, i) => (
-            <div key={p.name} style={{
-              display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
-              borderBottom: i < next3.length - 1 ? '1px solid ' + T.border : 'none',
-            }}>
-              <div style={{
-                width: 40, height: 40, borderRadius: 12, background: T.soft,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
-              }}>{p.icon}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ fontSize: 14.5, fontWeight: 600, color: T.ink }}>{p.name}</div>
-                  {p.auto && <div style={{ fontSize: 10, fontWeight: 700, color: T.blue, background: T.blueSoft, padding: '2px 6px', borderRadius: 4 }}>AUTO</div>}
+      <Section title="Próximos pagos" action="Ver todo" onAction={openUpcoming}>
+        {next3.length === 0 ? (
+          <Card pad={18} style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 24, marginBottom: 6 }}>✅</div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: T.muted }}>Sin pagos pendientes este mes</div>
+          </Card>
+        ) : (
+          <Card pad={0}>
+            {next3.map((p, i) => {
+              const disp = getUpcomingDateInfo(p);
+              const urgentColor = disp.isOverdue ? T.red : disp.isToday ? T.gold : disp.daysLeft <= 3 ? T.gold : T.muted;
+              const urgentLabel = disp.isOverdue ? 'Vencido' : disp.isToday ? 'Hoy' : 'en ' + disp.daysLeft + 'd';
+              return (
+                <div key={p.id || p.name} style={{
+                  display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
+                  borderBottom: i < next3.length - 1 ? '1px solid ' + T.border : 'none',
+                }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 12,
+                    background: (disp.isOverdue || disp.isToday) ? T.red + '15' : T.soft,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
+                  }}>{p.icon}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ fontSize: 14.5, fontWeight: 600, color: T.ink }}>{p.name}</div>
+                      {p.auto && <div style={{ fontSize: 10, fontWeight: 700, color: T.blue, background: T.blueSoft, padding: '2px 6px', borderRadius: 4 }}>AUTO</div>}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                      <div style={{ fontSize: 12, color: T.muted }}>{disp.date} · {p.who}</div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: urgentColor, background: urgentColor + '18', padding: '1px 5px', borderRadius: 999 }}>
+                        {urgentLabel}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>{fmt(p.amount)}</div>
+                    {onPayUpcoming && !p.auto && (
+                      <button onClick={() => onPayUpcoming(p.id)} style={{
+                        background: T.ink, color: '#fff', border: 'none',
+                        padding: '4px 10px', borderRadius: 999, fontSize: 10.5, fontWeight: 700,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}>Pagar</button>
+                    )}
+                  </div>
                 </div>
-                <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{p.date} · {p.who}</div>
-              </div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>{fmt(p.amount)}</div>
-            </div>
-          ))}
-        </Card>
+              );
+            })}
+          </Card>
+        )}
       </Section>
 
       {/* Metas */}

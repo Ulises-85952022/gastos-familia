@@ -932,6 +932,270 @@ Tú:`;
   );
 }
 
+// ═══════════════════════════════════════════════════════════
+// UPCOMING PAYMENTS
+// ═══════════════════════════════════════════════════════════
+function UpcomingModal({ open, onClose, upcoming, onPay, onAdd, activeMember }) {
+  const [filter, setFilter] = React.useState('pendientes');
+  const [addOpen, setAddOpen] = React.useState(false);
+
+  if (!open) return null;
+
+  const isMine = (p) => activeMember?.id === 'familia' || p.who === activeMember?.name || p.who === 'Yo';
+
+  const filtered = [...(upcoming || [])]
+    .filter(p => filter === 'pendientes' ? !p.paid : filter === 'pagados' ? p.paid : true)
+    .sort((a, b) => {
+      if (a.paid !== b.paid) return a.paid ? 1 : -1;
+      return getUpcomingDateInfo(a).daysLeft - getUpcomingDateInfo(b).daysLeft;
+    });
+
+  const totalPending = (upcoming || []).filter(p => !p.paid).reduce((s, p) => s + p.amount, 0);
+  const pendingCount = (upcoming || []).filter(p => !p.paid).length;
+  const paidCount    = (upcoming || []).filter(p =>  p.paid).length;
+
+  return (
+    <FullSheet onClose={onClose} title="Próximos pagos">
+      {/* Summary hero */}
+      <div style={{
+        background: 'linear-gradient(135deg, #FBEFDC 0%, #FCE7EE 100%)',
+        border: '1px solid rgba(201,122,42,0.2)',
+        borderRadius: 22, padding: '18px 20px', marginBottom: 16,
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: T.gold }}>
+          Total por pagar este mes
+        </div>
+        <div style={{ fontFamily: 'inherit', fontWeight: 400, fontSize: 44, lineHeight: 1, marginTop: 4, color: T.ink, letterSpacing: -1 }}>
+          {fmt(totalPending)}
+        </div>
+        <div style={{ fontSize: 12, color: T.ink2, marginTop: 6 }}>
+          {pendingCount} pendiente{pendingCount !== 1 ? 's' : ''} · {paidCount} completado{paidCount !== 1 ? 's' : ''}
+        </div>
+      </div>
+
+      {/* Filter chips */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <Chip active={filter === 'pendientes'} onClick={() => setFilter('pendientes')}>Pendientes</Chip>
+        <Chip active={filter === 'pagados'} onClick={() => setFilter('pagados')} color={T.green}>Pagados</Chip>
+        <Chip active={filter === 'todos'} onClick={() => setFilter('todos')}>Todos</Chip>
+      </div>
+
+      {/* Payments list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+        {filtered.map(p => {
+          const disp = getUpcomingDateInfo(p);
+          const urgentColor = p.paid ? T.green : disp.isOverdue ? T.red : disp.isToday ? T.gold : disp.daysLeft <= 3 ? T.gold : T.muted;
+          const urgentLabel = p.paid ? 'Pagado' : disp.isOverdue ? 'Vencido' : disp.isToday ? 'Hoy' : 'en ' + disp.daysLeft + 'd';
+          return (
+            <Card key={p.id} pad={14}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 46, height: 46, borderRadius: 14,
+                  background: p.paid ? T.greenSoft : (disp.isOverdue || disp.isToday) ? T.red + '15' : T.goldSoft,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 22, opacity: p.paid ? 0.6 : 1,
+                }}>{p.paid ? '✅' : p.icon}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ fontSize: 14.5, fontWeight: 700, color: p.paid ? T.muted : T.ink, textDecoration: p.paid ? 'line-through' : 'none' }}>{p.name}</div>
+                    {p.auto && !p.paid && <div style={{ fontSize: 10, fontWeight: 700, color: T.blue, background: T.blueSoft, padding: '2px 6px', borderRadius: 4 }}>AUTO</div>}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                    <div style={{ fontSize: 11.5, color: T.muted }}>{disp.date} · {p.who}</div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: urgentColor, background: urgentColor + '18', padding: '1px 6px', borderRadius: 999 }}>
+                      {urgentLabel}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: p.paid ? T.muted : T.ink, letterSpacing: -0.2 }}>{fmt(p.amount)}</div>
+                  {!p.paid && isMine(p) && (
+                    <button onClick={() => onPay(p.id)} style={{
+                      background: T.ink, color: '#fff', border: 'none',
+                      padding: '6px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 700,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}>Pagar</button>
+                  )}
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+        {filtered.length === 0 && (
+          <Card style={{ textAlign: 'center', padding: '32px 20px' }}>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>{filter === 'pagados' ? '💤' : '✅'}</div>
+            <div style={{ fontWeight: 600, color: T.muted }}>{filter === 'pagados' ? 'Aún no hay pagos completados' : 'Sin pagos pendientes'}</div>
+          </Card>
+        )}
+      </div>
+
+      {/* Add button */}
+      <button onClick={() => setAddOpen(true)} style={{
+        width: '100%', border: '1.5px dashed ' + T.border, background: 'transparent',
+        padding: '16px', borderRadius: 16, fontSize: 14, fontWeight: 700, color: T.ink2,
+        cursor: 'pointer', fontFamily: 'inherit',
+      }}>+ Agregar pago recurrente</button>
+
+      {addOpen && (
+        <UpcomingAddSheet
+          onClose={() => setAddOpen(false)}
+          onAdd={(p) => { onAdd(p); setAddOpen(false); }}
+          activeMember={activeMember}
+        />
+      )}
+    </FullSheet>
+  );
+}
+
+function UpcomingAddSheet({ onClose, onAdd, activeMember }) {
+  const [name, setName]       = React.useState('');
+  const [amount, setAmount]   = React.useState('');
+  const [dueDay, setDueDay]   = React.useState('');
+  const [cat, setCat]         = React.useState('servicios');
+  const [icon, setIcon]       = React.useState('💡');
+  const [auto, setAuto]       = React.useState(false);
+
+  const iconOptions = [
+    { icon: '🏠', label: 'Renta'  }, { icon: '💡', label: 'Luz'     }, { icon: '📺', label: 'TV'     },
+    { icon: '🌐', label: 'Internet'}, { icon: '🎵', label: 'Música'  }, { icon: '📱', label: 'Teléfono'},
+    { icon: '⚡', label: 'CFE'    }, { icon: '💧', label: 'Agua'    }, { icon: '🛡️', label: 'Seguro' },
+    { icon: '🚗', label: 'Auto'   }, { icon: '🏋️', label: 'Gym'     }, { icon: '📚', label: 'Edu'    },
+  ];
+
+  const canSave = name.trim() && Number(amount) > 0 && Number(dueDay) >= 1 && Number(dueDay) <= 31;
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 80,
+      background: 'rgba(20,18,15,0.5)',
+      display: 'flex', alignItems: 'flex-end',
+      animation: 'fadeIn 200ms ease',
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: T.bg, width: '100%', borderRadius: '28px 28px 0 0',
+        padding: '8px 18px 32px', maxHeight: '90%', overflow: 'auto',
+        animation: 'slideUp 280ms cubic-bezier(.2,.7,.3,1)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0 14px' }}>
+          <div style={{ width: 38, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.18)' }} />
+        </div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: T.ink, marginBottom: 20 }}>Nuevo pago recurrente</div>
+
+        {/* Icon picker */}
+        <div style={{ fontSize: 12, fontWeight: 700, color: T.muted, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 10 }}>Ícono</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginBottom: 18 }}>
+          {iconOptions.map(opt => (
+            <button key={opt.icon} onClick={() => setIcon(opt.icon)} style={{
+              border: '1.5px solid ' + (icon === opt.icon ? T.ink : T.border),
+              background: icon === opt.icon ? T.soft : '#fff',
+              borderRadius: 12, padding: '8px 4px',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}>
+              <div style={{ fontSize: 20 }}>{opt.icon}</div>
+              <div style={{ fontSize: 9, fontWeight: 600, color: T.muted }}>{opt.label}</div>
+            </button>
+          ))}
+        </div>
+
+        {/* Name */}
+        <div style={{ fontSize: 12, fontWeight: 700, color: T.muted, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8 }}>Nombre</div>
+        <input
+          value={name} onChange={e => setName(e.target.value)}
+          placeholder="ej. Netflix, Renta, CFE…"
+          style={{ width: '100%', boxSizing: 'border-box', padding: '13px 14px', borderRadius: 14, border: '1px solid ' + T.border, background: '#fff', fontSize: 14, fontFamily: 'inherit', color: T.ink, outline: 'none', marginBottom: 16 }}
+        />
+
+        {/* Amount + Due day */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: T.muted, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8 }}>Monto</div>
+            <div style={{ position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: T.muted }}>$</span>
+              <input
+                value={amount} onChange={e => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
+                placeholder="0" inputMode="decimal"
+                style={{ width: '100%', boxSizing: 'border-box', paddingLeft: 26, paddingRight: 12, paddingTop: 13, paddingBottom: 13, borderRadius: 14, border: '1px solid ' + T.border, background: '#fff', fontSize: 14, fontFamily: 'inherit', color: T.ink, outline: 'none' }}
+              />
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: T.muted, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8 }}>Día del mes</div>
+            <input
+              value={dueDay} onChange={e => setDueDay(e.target.value.replace(/[^\d]/g, ''))}
+              placeholder="1–31" inputMode="numeric"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '13px 14px', borderRadius: 14, border: '1px solid ' + T.border, background: '#fff', fontSize: 14, fontFamily: 'inherit', color: T.ink, outline: 'none' }}
+            />
+          </div>
+        </div>
+
+        {/* Category */}
+        <div style={{ fontSize: 12, fontWeight: 700, color: T.muted, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 10 }}>Categoría</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 18 }}>
+          {Object.entries(APP_DATA.categories).map(([id, c]) => (
+            <button key={id} onClick={() => setCat(id)} style={{
+              border: '1.5px solid ' + (cat === id ? c.color : T.border),
+              background: cat === id ? c.color + '14' : '#fff',
+              borderRadius: 12, padding: '8px 4px',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}>
+              <div style={{ fontSize: 18 }}>{c.icon}</div>
+              <div style={{ fontSize: 9, fontWeight: 600, color: cat === id ? c.color : T.ink2, textAlign: 'center', lineHeight: 1.2 }}>{c.name}</div>
+            </button>
+          ))}
+        </div>
+
+        {/* Auto toggle */}
+        <div style={{
+          display: 'flex', alignItems: 'center', padding: '12px 14px',
+          background: T.card, border: '1px solid ' + T.border, borderRadius: 14, marginBottom: 20,
+        }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: T.ink }}>Cargo automático</div>
+            <div style={{ fontSize: 11.5, color: T.muted, marginTop: 1 }}>El banco lo cobra sin acción tuya</div>
+          </div>
+          <button onClick={() => setAuto(!auto)} style={{
+            width: 46, height: 28, borderRadius: 14,
+            background: auto ? T.blue : T.soft, border: 'none',
+            cursor: 'pointer', position: 'relative', transition: 'background 200ms',
+          }}>
+            <div style={{
+              position: 'absolute', top: 2, left: auto ? 20 : 2,
+              width: 24, height: 24, borderRadius: 12, background: '#fff',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)', transition: 'left 200ms',
+            }} />
+          </button>
+        </div>
+
+        <button
+          disabled={!canSave}
+          onClick={() => onAdd({
+            id: 'up' + Date.now(),
+            name: name.trim(),
+            icon,
+            amount: Number(amount),
+            dueDay: Number(dueDay),
+            who: activeMember ? activeMember.name : 'Yo',
+            cat,
+            auto,
+            paid: false,
+          })}
+          style={{
+            width: '100%', border: 'none',
+            cursor: canSave ? 'pointer' : 'not-allowed',
+            background: canSave ? T.ink : T.soft,
+            color: canSave ? '#fff' : T.muted,
+            padding: '16px', borderRadius: 16, fontSize: 15, fontWeight: 700,
+            fontFamily: 'inherit', transition: 'all 200ms',
+          }}
+        >Guardar</button>
+      </div>
+    </div>
+  );
+}
+
 Object.assign(window, {
   AccountsStrip, AccountsModal, ScanModal, RemindersModal, AssistantModal, FullSheet,
+  UpcomingModal, UpcomingAddSheet,
 });
