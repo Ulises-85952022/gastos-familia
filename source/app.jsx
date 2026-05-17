@@ -3,11 +3,12 @@
 // ── Firebase REST helpers ─────────────────────────────────────
 const FB = 'https://app-familiae-default-rtdb.firebaseio.com/data';
 function fbSave(payload) {
-  fetch(FB + '.json', {
+  return fetch(FB + '.json', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  }).catch(() => {});
+  }).then(r => { if (!r.ok) console.error('[FB] save error', r.status); })
+    .catch(e => console.error('[FB] save failed', e));
 }
 
 // ── localStorage helpers ─────────────────────────────────────
@@ -77,6 +78,7 @@ function App() {
   const [catCreatorKind, setCatCreatorKind] = React.useState('gasto');
   const [accCreatorOpen, setAccCreatorOpen] = React.useState(false);
   const [toast, setToast] = React.useState(null);
+  const [fbStatus, setFbStatus] = React.useState('connecting'); // 'connecting'|'ok'|'error'
 
   // Persistent state — loaded from localStorage on first render
   const [accounts, setAccounts] = React.useState(() => {
@@ -137,26 +139,47 @@ function App() {
         remote.customSources.forEach(s => { APP_DATA.incomeSources[s.id] = { name: s.name, icon: s.icon, color: s.color }; });
         setCustomSources(remote.customSources);
       }
-      setTimeout(() => { fbReceiving.current = false; fbReady.current = true; }, 300);
+      setTimeout(() => { fbReceiving.current = false; fbReady.current = true; }, 500);
     }
 
     const snap0 = { txs, accounts, goals, customCats, customSources, upcoming, budgets };
+    const hasLocalData = snap0.txs.length > 0 || snap0.accounts.length > 0;
+
     const es = new EventSource(FB + '.json?accept=text/event-stream');
     es.addEventListener('put', e => {
       try {
         const d = JSON.parse(e.data);
-        if (!d.data) { fbSave(snap0); fbReady.current = true; }
-        else applyRemote(d.data);
-      } catch { fbReady.current = true; }
+        if (d.data === null || d.data === undefined) {
+          // Firebase is empty — only seed from this device if we have local data
+          if (hasLocalData) fbSave(snap0);
+          fbReady.current = true;
+          setFbStatus('ok');
+        } else {
+          applyRemote(d.data);
+          setFbStatus('ok');
+        }
+      } catch (err) {
+        console.error('[FB] parse error', err);
+        fbReady.current = true;
+        setFbStatus('error');
+      }
     });
-    es.onerror = () => { fbReady.current = true; };
+    es.onerror = (err) => {
+      console.error('[FB] SSE error', err);
+      fbReady.current = true;
+      setFbStatus('error');
+    };
     return () => es.close();
   }, []);
 
-  // Debounced save — 800 ms after any data change
+  // Debounced save — 1 s after any data change
   React.useEffect(() => {
     if (!fbReady.current || fbReceiving.current) return;
+<<<<<<< HEAD
     const timer = setTimeout(() => fbSave({ txs, accounts, goals, customCats, customSources, upcoming, budgets }), 800);
+=======
+    const timer = setTimeout(() => fbSave({ txs, accounts, goals, customCats, customSources }), 1000);
+>>>>>>> 0824461 (Fix Firebase sync race condition and add connection status indicator)
     return () => clearTimeout(timer);
   }, [txs, accounts, goals, customCats, customSources, upcoming, budgets]);
 
@@ -421,6 +444,15 @@ function App() {
       color: T.ink,
     }}>
       {screen}
+
+      {/* Sync status dot */}
+      <div style={{
+        position: 'fixed', top: 12, right: 14, zIndex: 90,
+        width: 8, height: 8, borderRadius: 4,
+        background: fbStatus === 'ok' ? T.green : fbStatus === 'error' ? T.red : T.gold,
+        boxShadow: fbStatus === 'ok' ? '0 0 0 2px ' + T.greenSoft : fbStatus === 'error' ? '0 0 0 2px ' + T.redSoft : '0 0 0 2px ' + T.goldSoft,
+        transition: 'background 400ms',
+      }} title={fbStatus === 'ok' ? 'Sincronizado' : fbStatus === 'error' ? 'Sin sincronización' : 'Conectando…'} />
 
       {/* Toast */}
       {toast && (
