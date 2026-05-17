@@ -71,6 +71,7 @@ function App() {
   const [scanOpen, setScanOpen]           = React.useState(false);
   const [remindersOpen, setRemindersOpen] = React.useState(false);
   const [assistantOpen, setAssistantOpen] = React.useState(false);
+  const [upcomingOpen, setUpcomingOpen]   = React.useState(false);
   const [catCreatorOpen, setCatCreatorOpen] = React.useState(false);
   const [catCreatorKind, setCatCreatorKind] = React.useState('gasto');
   const [accCreatorOpen, setAccCreatorOpen] = React.useState(false);
@@ -87,6 +88,8 @@ function App() {
     const stored = loadLS('transactions', []);
     return stored.map(t => t.who === 'Esposa' ? { ...t, who: 'Ale' } : t);
   });
+
+  const [upcoming, setUpcoming] = React.useState(() => loadLS('upcoming', APP_DATA.upcoming));
 
   const [customCats, setCustomCats] = React.useState(() => {
     const cats = loadLS('customCats', []);
@@ -105,6 +108,7 @@ function App() {
   React.useEffect(() => { saveLS('goals', goals); }, [goals]);
   React.useEffect(() => { saveLS('customCats', customCats); }, [customCats]);
   React.useEffect(() => { saveLS('customSources', customSources); }, [customSources]);
+  React.useEffect(() => { saveLS('upcoming', upcoming); }, [upcoming]);
 
   // ── Firebase real-time sync ────────────────────────────────
   const fbReady     = React.useRef(false);
@@ -117,6 +121,7 @@ function App() {
       setTxs((remote.txs || []).map(t => t.who === 'Esposa' ? { ...t, who: 'Ale' } : t));
       setAccounts((remote.accounts || []).map(a => a.owner ? a : { ...a, owner: APP_DATA.members[0].id }));
       setGoals(remote.goals || []);
+      if (remote.upcoming) setUpcoming(remote.upcoming);
       if (remote.customCats) {
         remote.customCats.forEach(c => { APP_DATA.categories[c.id] = { name: c.name, icon: c.icon, color: c.color }; });
         setCustomCats(remote.customCats);
@@ -128,7 +133,7 @@ function App() {
       setTimeout(() => { fbReceiving.current = false; fbReady.current = true; }, 300);
     }
 
-    const snap0 = { txs, accounts, goals, customCats, customSources };
+    const snap0 = { txs, accounts, goals, customCats, customSources, upcoming };
     const es = new EventSource(FB + '.json?accept=text/event-stream');
     es.addEventListener('put', e => {
       try {
@@ -144,9 +149,9 @@ function App() {
   // Debounced save — 800 ms after any data change
   React.useEffect(() => {
     if (!fbReady.current || fbReceiving.current) return;
-    const timer = setTimeout(() => fbSave({ txs, accounts, goals, customCats, customSources }), 800);
+    const timer = setTimeout(() => fbSave({ txs, accounts, goals, customCats, customSources, upcoming }), 800);
     return () => clearTimeout(timer);
-  }, [txs, accounts, goals, customCats, customSources]);
+  }, [txs, accounts, goals, customCats, customSources, upcoming]);
 
   const [activeMember, setActiveMember] = React.useState(
     () => {
@@ -272,6 +277,31 @@ function App() {
     showToast('Movimiento eliminado', T.muted);
   };
 
+  const handlePayUpcoming = (id) => {
+    const payment = upcoming.find(p => p.id === id);
+    if (!payment || payment.paid) return;
+    setUpcoming(list => list.map(p => p.id === id ? { ...p, paid: true } : p));
+    const today = new Date().toISOString().slice(0, 10);
+    const newTx = {
+      id: 't' + Date.now(),
+      date: today,
+      day: getDayLabel(today),
+      kind: 'gasto',
+      cat: payment.cat,
+      desc: payment.name,
+      who: payment.who,
+      amount: payment.amount,
+      account: null,
+    };
+    setTxs(prev => [newTx, ...prev]);
+    showToast('💸 ' + payment.name + ' pagado · ' + fmt(payment.amount), T.red);
+  };
+
+  const handleAddUpcoming = (payment) => {
+    setUpcoming(list => [...list, payment]);
+    showToast('📅 "' + payment.name + '" agregado', T.blue);
+  };
+
   const handleDeleteAccount = (id) => {
     setAccounts(prev => prev.filter(a => a.id !== id));
     showToast('Cuenta eliminada', T.muted);
@@ -297,6 +327,9 @@ function App() {
       openAccountCreator={() => setAccCreatorOpen(true)}
       openAssistant={() => setAssistantOpen(true)}
       openReminders={() => setRemindersOpen(true)}
+      openUpcoming={() => setUpcomingOpen(true)}
+      upcoming={upcoming}
+      onPayUpcoming={handlePayUpcoming}
       activeMember={activeMember}
       members={switcherMembers}
       onSwitchMember={switchMember}
@@ -372,6 +405,7 @@ function App() {
 
       <AccountsModal open={accountsOpen} onClose={() => setAccountsOpen(false)} accounts={activeMember?.id === 'familia' ? allLiveAccounts : liveAccounts} onCreate={() => setAccCreatorOpen(true)} onDelete={handleDeleteAccount} onEdit={handleEditAccount} activeMember={activeMember} />
       <RemindersModal  open={remindersOpen}  onClose={() => setRemindersOpen(false)} />
+      <UpcomingModal   open={upcomingOpen}   onClose={() => setUpcomingOpen(false)} upcoming={upcoming} onPay={handlePayUpcoming} onAdd={handleAddUpcoming} activeMember={activeMember} />
       <AssistantModal  open={assistantOpen}  onClose={() => setAssistantOpen(false)} />
       <ScanModal       open={scanOpen}       onClose={() => setScanOpen(false)}
                        onResult={(e) => { setAddPrefill(e); setAddKind('gasto'); setAddOpen(true); setScanOpen(false); }} />
