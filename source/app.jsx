@@ -110,6 +110,18 @@ function App() {
     return { ...totals, label: getCurrentMonthLabel() };
   }, [txs, activeMember]);
 
+  // Live account balances — initial balance adjusted by all transactions
+  const liveAccounts = React.useMemo(() => {
+    return accounts.map(a => {
+      const delta = txs.reduce((sum, t) => {
+        if (t.account !== a.id) return sum;
+        if (t.kind === 'ingreso') return sum + t.amount;
+        return sum - t.amount; // gasto y ahorro restan del saldo
+      }, 0);
+      return { ...a, balance: a.balance + delta };
+    });
+  }, [accounts, txs]);
+
   // ── Helpers ────────────────────────────────────────────────
   const showToast = (msg, color) => {
     setToast({ msg, color });
@@ -191,7 +203,7 @@ function App() {
     screen = <DashboardScreen
       user={{ name: activeMember?.name || '' }}
       goTab={setTab} openAdd={openAdd}
-      monthOverride={month} accounts={accounts} goals={goals}
+      monthOverride={month} accounts={liveAccounts} goals={goals}
       openAccounts={() => setAccountsOpen(true)}
       openAccountCreator={() => setAccCreatorOpen(true)}
       openAssistant={() => setAssistantOpen(true)}
@@ -269,7 +281,7 @@ function App() {
         onSave={handleSave}
       />
 
-      <AccountsModal   open={accountsOpen}   onClose={() => setAccountsOpen(false)} accounts={accounts} onCreate={() => setAccCreatorOpen(true)} />
+      <AccountsModal   open={accountsOpen}   onClose={() => setAccountsOpen(false)} accounts={liveAccounts} onCreate={() => setAccCreatorOpen(true)} />
       <RemindersModal  open={remindersOpen}  onClose={() => setRemindersOpen(false)} />
       <AssistantModal  open={assistantOpen}  onClose={() => setAssistantOpen(false)} />
       <ScanModal       open={scanOpen}       onClose={() => setScanOpen(false)}
