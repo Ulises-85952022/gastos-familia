@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════
-function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, openAssistant, openReminders, openUpcoming, accounts, openAccountCreator, goals, activeMember, members, onSwitchMember, totalBalance, upcoming, onPayUpcoming }) {
+function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, openAssistant, openReminders, openUpcoming, accounts, openAccountCreator, goals, activeMember, members, onSwitchMember, totalBalance, upcoming, onPayUpcoming, budgets, openPresupuestos }) {
   const m = monthOverride || { income: 0, expenses: 0, savings: 0, label: '' };
   const hasAccounts = accounts && accounts.length > 0;
   const disponible = hasAccounts ? totalBalance || 0 : m.income - m.expenses - m.savings;
@@ -15,7 +15,7 @@ function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, op
   ];
 
   // top categories from budgets
-  const topCats = [...APP_DATA.budgets]
+  const topCats = [...(budgets || [])]
     .sort((a,b) => b.spent - a.spent).slice(0, 4);
 
   const next3 = (upcoming || []).filter(p => !p.paid).slice(0, 3);
@@ -255,7 +255,7 @@ function DashboardScreen({ goTab, openAdd, user, monthOverride, openAccounts, op
       </Section>
 
       {/* Top categorías */}
-      <Section title="Top categorías del mes" action="Presupuestos">
+      <Section title="Top categorías del mes" action="Presupuestos" onAction={openPresupuestos}>
         <Card pad={16}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {topCats.map(b => {

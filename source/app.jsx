@@ -72,6 +72,7 @@ function App() {
   const [remindersOpen, setRemindersOpen] = React.useState(false);
   const [assistantOpen, setAssistantOpen] = React.useState(false);
   const [upcomingOpen, setUpcomingOpen]   = React.useState(false);
+  const [budgetsOpen, setBudgetsOpen]   = React.useState(false);
   const [catCreatorOpen, setCatCreatorOpen] = React.useState(false);
   const [catCreatorKind, setCatCreatorKind] = React.useState('gasto');
   const [accCreatorOpen, setAccCreatorOpen] = React.useState(false);
@@ -90,6 +91,10 @@ function App() {
   });
 
   const [upcoming, setUpcoming] = React.useState(() => loadLS('upcoming', APP_DATA.upcoming));
+  const [budgets, setBudgets] = React.useState(() => {
+    const raw = loadLS('budgets', null) || APP_DATA.budgets;
+    return raw.map(b => ({ cat: b.cat, limit: b.limit || 0 }));
+  });
 
   const [customCats, setCustomCats] = React.useState(() => {
     const cats = loadLS('customCats', []);
@@ -109,6 +114,7 @@ function App() {
   React.useEffect(() => { saveLS('customCats', customCats); }, [customCats]);
   React.useEffect(() => { saveLS('customSources', customSources); }, [customSources]);
   React.useEffect(() => { saveLS('upcoming', upcoming); }, [upcoming]);
+  React.useEffect(() => { saveLS('budgets', budgets); }, [budgets]);
 
   // ── Firebase real-time sync ────────────────────────────────
   const fbReady     = React.useRef(false);
@@ -122,6 +128,7 @@ function App() {
       setAccounts((remote.accounts || []).map(a => a.owner ? a : { ...a, owner: APP_DATA.members[0].id }));
       setGoals(remote.goals || []);
       if (remote.upcoming) setUpcoming(remote.upcoming);
+      if (remote.budgets) setBudgets(remote.budgets.map(b => ({ cat: b.cat, limit: b.limit || 0 })));
       if (remote.customCats) {
         remote.customCats.forEach(c => { APP_DATA.categories[c.id] = { name: c.name, icon: c.icon, color: c.color }; });
         setCustomCats(remote.customCats);
@@ -133,7 +140,7 @@ function App() {
       setTimeout(() => { fbReceiving.current = false; fbReady.current = true; }, 300);
     }
 
-    const snap0 = { txs, accounts, goals, customCats, customSources, upcoming };
+    const snap0 = { txs, accounts, goals, customCats, customSources, upcoming, budgets };
     const es = new EventSource(FB + '.json?accept=text/event-stream');
     es.addEventListener('put', e => {
       try {
@@ -149,9 +156,9 @@ function App() {
   // Debounced save — 800 ms after any data change
   React.useEffect(() => {
     if (!fbReady.current || fbReceiving.current) return;
-    const timer = setTimeout(() => fbSave({ txs, accounts, goals, customCats, customSources, upcoming }), 800);
+    const timer = setTimeout(() => fbSave({ txs, accounts, goals, customCats, customSources, upcoming, budgets }), 800);
     return () => clearTimeout(timer);
-  }, [txs, accounts, goals, customCats, customSources, upcoming]);
+  }, [txs, accounts, goals, customCats, customSources, upcoming, budgets]);
 
   const [activeMember, setActiveMember] = React.useState(
     () => {
@@ -173,6 +180,18 @@ function App() {
       : calcMemberTotals(txs, activeMember.name);
     return { ...totals, label: getCurrentMonthLabel() };
   }, [txs, activeMember]);
+
+  const spentByCategory = React.useMemo(() => {
+    const ym = new Date().toISOString().slice(0, 7);
+    const acc = {};
+    txs.filter(t => t.kind === 'gasto' && t.date && t.date.startsWith(ym))
+       .forEach(t => { if (t.cat) acc[t.cat] = (acc[t.cat] || 0) + t.amount; });
+    return acc;
+  }, [txs]);
+
+  const liveBudgets = React.useMemo(() =>
+    budgets.map(b => ({ ...b, spent: spentByCategory[b.cat] || 0 }))
+  , [budgets, spentByCategory]);
 
   // Live account balances — filtered by owner, initial balance adjusted by transactions
   const liveAccounts = React.useMemo(() => {
@@ -297,9 +316,37 @@ function App() {
     showToast('💸 ' + payment.name + ' pagado · ' + fmt(payment.amount), T.red);
   };
 
-  const handleAddUpcoming = (payment) => {
-    setUpcoming(list => [...list, payment]);
-    showToast('📅 "' + payment.name + '" agregado', T.blue);
+  const handleSaveUpcoming = (payment) => {
+    const exists = upcoming.some(p => p.id === payment.id);
+    if (exists) {
+      setUpcoming(list => list.map(p => p.id === payment.id ? payment : p));
+      showToast('✏️ "' + payment.name + '" actualizado', T.blue);
+    } else {
+      setUpcoming(list => [...list, payment]);
+      showToast('📅 "' + payment.name + '" agregado', T.blue);
+    }
+  };
+
+  const handleDeleteUpcoming = (id) => {
+    const p = upcoming.find(x => x.id === id);
+    setUpcoming(list => list.filter(x => x.id !== id));
+    if (p) showToast('"' + p.name + '" eliminado', T.muted);
+  };
+
+  const handleSaveBudget = (b) => {
+    const exists = budgets.some(x => x.cat === b.cat);
+    if (exists) {
+      setBudgets(list => list.map(x => x.cat === b.cat ? { cat: b.cat, limit: b.limit } : x));
+      showToast('✏️ Presupuesto actualizado', T.blue);
+    } else {
+      setBudgets(list => [...list, { cat: b.cat, limit: b.limit }]);
+      showToast('🎯 Presupuesto "' + (APP_DATA.categories[b.cat]?.name || b.cat) + '" agregado', T.blue);
+    }
+  };
+
+  const handleDeleteBudget = (cat) => {
+    setBudgets(list => list.filter(b => b.cat !== cat));
+    showToast('"' + (APP_DATA.categories[cat]?.name || cat) + '" eliminado', T.muted);
   };
 
   const handleDeleteAccount = (id) => {
@@ -328,6 +375,8 @@ function App() {
       openAssistant={() => setAssistantOpen(true)}
       openReminders={() => setRemindersOpen(true)}
       openUpcoming={() => setUpcomingOpen(true)}
+      budgets={liveBudgets}
+      openPresupuestos={() => setBudgetsOpen(true)}
       upcoming={upcoming}
       onPayUpcoming={handlePayUpcoming}
       activeMember={activeMember}
@@ -347,14 +396,14 @@ function App() {
       activeMember={activeMember}
       transactions={txs}
       onAction={(action) => {
+        if (action === 'presupuestos') { setBudgetsOpen(true); return; }
+        if (action === 'recurrentes')  { setUpcomingOpen(true); return; }
         const msgs = {
           'invite':         ['Código copiado: RAMIREZ-2026', T.blue],
           'edit-profile':   ['Editar perfil — próximamente', T.ink],
           'settle':         ['Saldo enviado a Carla 👍', T.green],
           'split':          ['Dividir gasto — próximamente', T.ink],
           'notificaciones': ['Notificaciones — próximamente', T.ink],
-          'presupuestos':   ['Presupuestos — próximamente', T.ink],
-          'recurrentes':    ['Pagos recurrentes — próximamente', T.ink],
           'exportar':       ['Exportando CSV…', T.blue],
           'apariencia':     ['Apariencia — próximamente', T.ink],
           'privacidad':     ['Privacidad — próximamente', T.ink],
@@ -405,7 +454,8 @@ function App() {
 
       <AccountsModal open={accountsOpen} onClose={() => setAccountsOpen(false)} accounts={activeMember?.id === 'familia' ? allLiveAccounts : liveAccounts} onCreate={() => setAccCreatorOpen(true)} onDelete={handleDeleteAccount} onEdit={handleEditAccount} activeMember={activeMember} />
       <RemindersModal  open={remindersOpen}  onClose={() => setRemindersOpen(false)} />
-      <UpcomingModal   open={upcomingOpen}   onClose={() => setUpcomingOpen(false)} upcoming={upcoming} onPay={handlePayUpcoming} onAdd={handleAddUpcoming} activeMember={activeMember} />
+      <UpcomingModal   open={upcomingOpen}   onClose={() => setUpcomingOpen(false)} upcoming={upcoming} onPay={handlePayUpcoming} onSave={handleSaveUpcoming} onDelete={handleDeleteUpcoming} activeMember={activeMember} />
+      <PresupuestosModal open={budgetsOpen} onClose={() => setBudgetsOpen(false)} budgets={liveBudgets} onSave={handleSaveBudget} onDelete={handleDeleteBudget} />
       <AssistantModal  open={assistantOpen}  onClose={() => setAssistantOpen(false)} />
       <ScanModal       open={scanOpen}       onClose={() => setScanOpen(false)}
                        onResult={(e) => { setAddPrefill(e); setAddKind('gasto'); setAddOpen(true); setScanOpen(false); }} />

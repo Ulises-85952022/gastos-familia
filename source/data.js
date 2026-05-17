@@ -33,12 +33,12 @@ window.APP_DATA = {
   accounts:     [],
   goals:        [],
   budgets: [
-    { cat: 'supermercado',    limit: 5000,  spent: 3200 },
-    { cat: 'restaurantes',    limit: 3000,  spent: 3630 },
-    { cat: 'transporte',      limit: 2000,  spent: 1200 },
-    { cat: 'entretenimiento', limit: 1500,  spent: 800  },
-    { cat: 'servicios',       limit: 3000,  spent: 2150 },
-    { cat: 'salud',           limit: 2000,  spent: 400  },
+    { cat: 'supermercado',    limit: 5000 },
+    { cat: 'restaurantes',    limit: 3000 },
+    { cat: 'transporte',      limit: 2000 },
+    { cat: 'entretenimiento', limit: 1500 },
+    { cat: 'servicios',       limit: 3000 },
+    { cat: 'salud',           limit: 2000 },
   ],
   upcoming: [
     { id: 'up1', name: 'Renta',         icon: '🏠', amount: 12000, dueDay: 15, who: 'Yo',  cat: 'renta',          auto: false, paid: false },

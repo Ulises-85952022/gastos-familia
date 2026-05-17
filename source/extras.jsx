@@ -935,9 +935,9 @@ Tú:`;
 // ═══════════════════════════════════════════════════════════
 // UPCOMING PAYMENTS
 // ═══════════════════════════════════════════════════════════
-function UpcomingModal({ open, onClose, upcoming, onPay, onAdd, activeMember }) {
+function UpcomingModal({ open, onClose, upcoming, onPay, onSave, onDelete, activeMember }) {
   const [filter, setFilter] = React.useState('pendientes');
-  const [addOpen, setAddOpen] = React.useState(false);
+  const [sheetMode, setSheetMode] = React.useState(null); // null | 'add' | paymentObj
 
   if (!open) return null;
 
@@ -956,31 +956,22 @@ function UpcomingModal({ open, onClose, upcoming, onPay, onAdd, activeMember }) 
 
   return (
     <FullSheet onClose={onClose} title="Próximos pagos">
-      {/* Summary hero */}
       <div style={{
         background: 'linear-gradient(135deg, #FBEFDC 0%, #FCE7EE 100%)',
         border: '1px solid rgba(201,122,42,0.2)',
         borderRadius: 22, padding: '18px 20px', marginBottom: 16,
       }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: T.gold }}>
-          Total por pagar este mes
-        </div>
-        <div style={{ fontFamily: 'inherit', fontWeight: 400, fontSize: 44, lineHeight: 1, marginTop: 4, color: T.ink, letterSpacing: -1 }}>
-          {fmt(totalPending)}
-        </div>
-        <div style={{ fontSize: 12, color: T.ink2, marginTop: 6 }}>
-          {pendingCount} pendiente{pendingCount !== 1 ? 's' : ''} · {paidCount} completado{paidCount !== 1 ? 's' : ''}
-        </div>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: T.gold }}>Total por pagar este mes</div>
+        <div style={{ fontFamily: 'inherit', fontWeight: 400, fontSize: 44, lineHeight: 1, marginTop: 4, color: T.ink, letterSpacing: -1 }}>{fmt(totalPending)}</div>
+        <div style={{ fontSize: 12, color: T.ink2, marginTop: 6 }}>{pendingCount} pendiente{pendingCount !== 1 ? 's' : ''} · {paidCount} completado{paidCount !== 1 ? 's' : ''}</div>
       </div>
 
-      {/* Filter chips */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <Chip active={filter === 'pendientes'} onClick={() => setFilter('pendientes')}>Pendientes</Chip>
         <Chip active={filter === 'pagados'} onClick={() => setFilter('pagados')} color={T.green}>Pagados</Chip>
         <Chip active={filter === 'todos'} onClick={() => setFilter('todos')}>Todos</Chip>
       </div>
 
-      {/* Payments list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
         {filtered.map(p => {
           const disp = getUpcomingDateInfo(p);
@@ -992,8 +983,7 @@ function UpcomingModal({ open, onClose, upcoming, onPay, onAdd, activeMember }) 
                 <div style={{
                   width: 46, height: 46, borderRadius: 14,
                   background: p.paid ? T.greenSoft : (disp.isOverdue || disp.isToday) ? T.red + '15' : T.goldSoft,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 22, opacity: p.paid ? 0.6 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, opacity: p.paid ? 0.6 : 1,
                 }}>{p.paid ? '✅' : p.icon}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1002,19 +992,16 @@ function UpcomingModal({ open, onClose, upcoming, onPay, onAdd, activeMember }) 
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
                     <div style={{ fontSize: 11.5, color: T.muted }}>{disp.date} · {p.who}</div>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: urgentColor, background: urgentColor + '18', padding: '1px 6px', borderRadius: 999 }}>
-                      {urgentLabel}
-                    </div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: urgentColor, background: urgentColor + '18', padding: '1px 6px', borderRadius: 999 }}>{urgentLabel}</div>
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: p.paid ? T.muted : T.ink, letterSpacing: -0.2 }}>{fmt(p.amount)}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: p.paid ? T.muted : T.ink, letterSpacing: -0.2 }}>{fmt(p.amount)}</div>
+                    <button onClick={() => setSheetMode(p)} style={{ border: 'none', background: T.soft, color: T.ink2, width: 30, height: 30, borderRadius: 10, cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✏️</button>
+                  </div>
                   {!p.paid && isMine(p) && (
-                    <button onClick={() => onPay(p.id)} style={{
-                      background: T.ink, color: '#fff', border: 'none',
-                      padding: '6px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 700,
-                      cursor: 'pointer', fontFamily: 'inherit',
-                    }}>Pagar</button>
+                    <button onClick={() => onPay(p.id)} style={{ background: T.ink, color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Pagar</button>
                   )}
                 </div>
               </div>
@@ -1029,167 +1016,262 @@ function UpcomingModal({ open, onClose, upcoming, onPay, onAdd, activeMember }) 
         )}
       </div>
 
-      {/* Add button */}
-      <button onClick={() => setAddOpen(true)} style={{
-        width: '100%', border: '1.5px dashed ' + T.border, background: 'transparent',
-        padding: '16px', borderRadius: 16, fontSize: 14, fontWeight: 700, color: T.ink2,
-        cursor: 'pointer', fontFamily: 'inherit',
-      }}>+ Agregar pago recurrente</button>
+      <button onClick={() => setSheetMode('add')} style={{ width: '100%', border: '1.5px dashed ' + T.border, background: 'transparent', padding: '16px', borderRadius: 16, fontSize: 14, fontWeight: 700, color: T.ink2, cursor: 'pointer', fontFamily: 'inherit' }}>+ Agregar pago recurrente</button>
 
-      {addOpen && (
+      {sheetMode && (
         <UpcomingAddSheet
-          onClose={() => setAddOpen(false)}
-          onAdd={(p) => { onAdd(p); setAddOpen(false); }}
+          onClose={() => setSheetMode(null)}
+          onSave={(p) => { onSave(p); setSheetMode(null); }}
+          onDelete={sheetMode !== 'add' ? (id) => { onDelete(id); setSheetMode(null); } : undefined}
           activeMember={activeMember}
+          initialValues={sheetMode !== 'add' ? sheetMode : undefined}
         />
       )}
     </FullSheet>
   );
 }
 
-function UpcomingAddSheet({ onClose, onAdd, activeMember }) {
-  const [name, setName]       = React.useState('');
-  const [amount, setAmount]   = React.useState('');
-  const [dueDay, setDueDay]   = React.useState('');
-  const [cat, setCat]         = React.useState('servicios');
-  const [icon, setIcon]       = React.useState('💡');
-  const [auto, setAuto]       = React.useState(false);
+function UpcomingAddSheet({ onClose, onSave, onDelete, activeMember, initialValues }) {
+  const isEditing = !!initialValues;
+  const [name, setName]     = React.useState(initialValues?.name   || '');
+  const [amount, setAmount] = React.useState(initialValues?.amount ? String(initialValues.amount) : '');
+  const [dueDay, setDueDay] = React.useState(initialValues?.dueDay ? String(initialValues.dueDay) : '');
+  const [cat, setCat]       = React.useState(initialValues?.cat    || 'servicios');
+  const [icon, setIcon]     = React.useState(initialValues?.icon   || '💡');
+  const [auto, setAuto]     = React.useState(initialValues?.auto   ?? false);
+  const [confirmDel, setConfirmDel] = React.useState(false);
 
   const iconOptions = [
-    { icon: '🏠', label: 'Renta'  }, { icon: '💡', label: 'Luz'     }, { icon: '📺', label: 'TV'     },
-    { icon: '🌐', label: 'Internet'}, { icon: '🎵', label: 'Música'  }, { icon: '📱', label: 'Teléfono'},
-    { icon: '⚡', label: 'CFE'    }, { icon: '💧', label: 'Agua'    }, { icon: '🛡️', label: 'Seguro' },
-    { icon: '🚗', label: 'Auto'   }, { icon: '🏋️', label: 'Gym'     }, { icon: '📚', label: 'Edu'    },
+    { icon: '🏠', label: 'Renta'   }, { icon: '💡', label: 'Luz'      }, { icon: '📺', label: 'TV'      },
+    { icon: '🌐', label: 'Internet'}, { icon: '🎵', label: 'Música'   }, { icon: '📱', label: 'Teléfono'},
+    { icon: '⚡', label: 'CFE'     }, { icon: '💧', label: 'Agua'     }, { icon: '🛡️', label: 'Seguro'  },
+    { icon: '🚗', label: 'Auto'    }, { icon: '🏋️', label: 'Gym'      }, { icon: '📚', label: 'Edu'     },
   ];
 
   const canSave = name.trim() && Number(amount) > 0 && Number(dueDay) >= 1 && Number(dueDay) <= 31;
 
+  const handleSave = () => {
+    onSave({
+      id: initialValues?.id || ('up' + Date.now()),
+      name: name.trim(),
+      icon,
+      amount: Number(amount),
+      dueDay: Number(dueDay),
+      who: initialValues?.who || (activeMember ? activeMember.name : 'Yo'),
+      cat,
+      auto,
+      paid: initialValues?.paid || false,
+    });
+  };
+
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 80,
-      background: 'rgba(20,18,15,0.5)',
-      display: 'flex', alignItems: 'flex-end',
-      animation: 'fadeIn 200ms ease',
-    }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{
-        background: T.bg, width: '100%', borderRadius: '28px 28px 0 0',
-        padding: '8px 18px 32px', maxHeight: '90%', overflow: 'auto',
-        animation: 'slideUp 280ms cubic-bezier(.2,.7,.3,1)',
-      }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(20,18,15,0.5)', display: 'flex', alignItems: 'flex-end', animation: 'fadeIn 200ms ease' }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: T.bg, width: '100%', borderRadius: '28px 28px 0 0', padding: '8px 18px 32px', maxHeight: '90%', overflow: 'auto', animation: 'slideUp 280ms cubic-bezier(.2,.7,.3,1)' }}>
         <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0 14px' }}>
           <div style={{ width: 38, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.18)' }} />
         </div>
-        <div style={{ fontSize: 17, fontWeight: 700, color: T.ink, marginBottom: 20 }}>Nuevo pago recurrente</div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: T.ink, marginBottom: 20 }}>{isEditing ? 'Editar pago' : 'Nuevo pago recurrente'}</div>
 
-        {/* Icon picker */}
         <div style={{ fontSize: 12, fontWeight: 700, color: T.muted, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 10 }}>Ícono</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginBottom: 18 }}>
           {iconOptions.map(opt => (
-            <button key={opt.icon} onClick={() => setIcon(opt.icon)} style={{
-              border: '1.5px solid ' + (icon === opt.icon ? T.ink : T.border),
-              background: icon === opt.icon ? T.soft : '#fff',
-              borderRadius: 12, padding: '8px 4px',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}>
+            <button key={opt.icon} onClick={() => setIcon(opt.icon)} style={{ border: '1.5px solid ' + (icon === opt.icon ? T.ink : T.border), background: icon === opt.icon ? T.soft : '#fff', borderRadius: 12, padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', fontFamily: 'inherit' }}>
               <div style={{ fontSize: 20 }}>{opt.icon}</div>
               <div style={{ fontSize: 9, fontWeight: 600, color: T.muted }}>{opt.label}</div>
             </button>
           ))}
         </div>
 
-        {/* Name */}
         <div style={{ fontSize: 12, fontWeight: 700, color: T.muted, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8 }}>Nombre</div>
-        <input
-          value={name} onChange={e => setName(e.target.value)}
-          placeholder="ej. Netflix, Renta, CFE…"
-          style={{ width: '100%', boxSizing: 'border-box', padding: '13px 14px', borderRadius: 14, border: '1px solid ' + T.border, background: '#fff', fontSize: 14, fontFamily: 'inherit', color: T.ink, outline: 'none', marginBottom: 16 }}
-        />
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="ej. Netflix, Renta, CFE…" style={{ width: '100%', boxSizing: 'border-box', padding: '13px 14px', borderRadius: 14, border: '1px solid ' + T.border, background: '#fff', fontSize: 14, fontFamily: 'inherit', color: T.ink, outline: 'none', marginBottom: 16 }} />
 
-        {/* Amount + Due day */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: T.muted, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8 }}>Monto</div>
             <div style={{ position: 'relative' }}>
               <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: T.muted }}>$</span>
-              <input
-                value={amount} onChange={e => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
-                placeholder="0" inputMode="decimal"
-                style={{ width: '100%', boxSizing: 'border-box', paddingLeft: 26, paddingRight: 12, paddingTop: 13, paddingBottom: 13, borderRadius: 14, border: '1px solid ' + T.border, background: '#fff', fontSize: 14, fontFamily: 'inherit', color: T.ink, outline: 'none' }}
-              />
+              <input value={amount} onChange={e => setAmount(e.target.value.replace(/[^\d.]/g, ''))} placeholder="0" inputMode="decimal" style={{ width: '100%', boxSizing: 'border-box', paddingLeft: 26, paddingRight: 12, paddingTop: 13, paddingBottom: 13, borderRadius: 14, border: '1px solid ' + T.border, background: '#fff', fontSize: 14, fontFamily: 'inherit', color: T.ink, outline: 'none' }} />
             </div>
           </div>
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: T.muted, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8 }}>Día del mes</div>
-            <input
-              value={dueDay} onChange={e => setDueDay(e.target.value.replace(/[^\d]/g, ''))}
-              placeholder="1–31" inputMode="numeric"
-              style={{ width: '100%', boxSizing: 'border-box', padding: '13px 14px', borderRadius: 14, border: '1px solid ' + T.border, background: '#fff', fontSize: 14, fontFamily: 'inherit', color: T.ink, outline: 'none' }}
-            />
+            <input value={dueDay} onChange={e => setDueDay(e.target.value.replace(/[^\d]/g, ''))} placeholder="1–31" inputMode="numeric" style={{ width: '100%', boxSizing: 'border-box', padding: '13px 14px', borderRadius: 14, border: '1px solid ' + T.border, background: '#fff', fontSize: 14, fontFamily: 'inherit', color: T.ink, outline: 'none' }} />
           </div>
         </div>
 
-        {/* Category */}
         <div style={{ fontSize: 12, fontWeight: 700, color: T.muted, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 10 }}>Categoría</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 18 }}>
           {Object.entries(APP_DATA.categories).map(([id, c]) => (
-            <button key={id} onClick={() => setCat(id)} style={{
-              border: '1.5px solid ' + (cat === id ? c.color : T.border),
-              background: cat === id ? c.color + '14' : '#fff',
-              borderRadius: 12, padding: '8px 4px',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}>
+            <button key={id} onClick={() => setCat(id)} style={{ border: '1.5px solid ' + (cat === id ? c.color : T.border), background: cat === id ? c.color + '14' : '#fff', borderRadius: 12, padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer', fontFamily: 'inherit' }}>
               <div style={{ fontSize: 18 }}>{c.icon}</div>
               <div style={{ fontSize: 9, fontWeight: 600, color: cat === id ? c.color : T.ink2, textAlign: 'center', lineHeight: 1.2 }}>{c.name}</div>
             </button>
           ))}
         </div>
 
-        {/* Auto toggle */}
-        <div style={{
-          display: 'flex', alignItems: 'center', padding: '12px 14px',
-          background: T.card, border: '1px solid ' + T.border, borderRadius: 14, marginBottom: 20,
-        }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 14px', background: T.card, border: '1px solid ' + T.border, borderRadius: 14, marginBottom: 20 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: T.ink }}>Cargo automático</div>
             <div style={{ fontSize: 11.5, color: T.muted, marginTop: 1 }}>El banco lo cobra sin acción tuya</div>
           </div>
-          <button onClick={() => setAuto(!auto)} style={{
-            width: 46, height: 28, borderRadius: 14,
-            background: auto ? T.blue : T.soft, border: 'none',
-            cursor: 'pointer', position: 'relative', transition: 'background 200ms',
-          }}>
-            <div style={{
-              position: 'absolute', top: 2, left: auto ? 20 : 2,
-              width: 24, height: 24, borderRadius: 12, background: '#fff',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.2)', transition: 'left 200ms',
-            }} />
+          <button onClick={() => setAuto(!auto)} style={{ width: 46, height: 28, borderRadius: 14, background: auto ? T.blue : T.soft, border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 200ms' }}>
+            <div style={{ position: 'absolute', top: 2, left: auto ? 20 : 2, width: 24, height: 24, borderRadius: 12, background: '#fff', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', transition: 'left 200ms' }} />
           </button>
         </div>
 
-        <button
-          disabled={!canSave}
-          onClick={() => onAdd({
-            id: 'up' + Date.now(),
-            name: name.trim(),
-            icon,
-            amount: Number(amount),
-            dueDay: Number(dueDay),
-            who: activeMember ? activeMember.name : 'Yo',
-            cat,
-            auto,
-            paid: false,
-          })}
-          style={{
-            width: '100%', border: 'none',
-            cursor: canSave ? 'pointer' : 'not-allowed',
-            background: canSave ? T.ink : T.soft,
-            color: canSave ? '#fff' : T.muted,
-            padding: '16px', borderRadius: 16, fontSize: 15, fontWeight: 700,
-            fontFamily: 'inherit', transition: 'all 200ms',
-          }}
-        >Guardar</button>
+        <button disabled={!canSave} onClick={handleSave} style={{ width: '100%', border: 'none', cursor: canSave ? 'pointer' : 'not-allowed', background: canSave ? T.ink : T.soft, color: canSave ? '#fff' : T.muted, padding: '16px', borderRadius: 16, fontSize: 15, fontWeight: 700, fontFamily: 'inherit', transition: 'all 200ms', marginBottom: isEditing && onDelete ? 10 : 0 }}>
+          {isEditing ? 'Actualizar' : 'Guardar'}
+        </button>
+
+        {isEditing && onDelete && (
+          <button onClick={() => {
+            if (confirmDel) { onDelete(initialValues.id); }
+            else setConfirmDel(true);
+          }} style={{ width: '100%', border: '1px solid ' + (confirmDel ? T.red : T.border), background: confirmDel ? T.red + '12' : 'transparent', color: confirmDel ? T.red : T.muted, padding: '14px', borderRadius: 16, fontSize: 14, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', marginTop: 2 }}>
+            {confirmDel ? '¿Confirmar eliminación?' : 'Eliminar pago'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// PRESUPUESTOS
+// ═══════════════════════════════════════════════════════════
+function PresupuestosModal({ open, onClose, budgets, onSave, onDelete }) {
+  const [sheetMode, setSheetMode] = React.useState(null); // null | 'add' | budgetObj
+
+  if (!open) return null;
+
+  const totalLimit = budgets.reduce((s, b) => s + b.limit, 0);
+  const totalSpent = budgets.reduce((s, b) => s + b.spent, 0);
+  const pctGlobal  = totalLimit > 0 ? Math.round((totalSpent / totalLimit) * 100) : 0;
+  const sorted     = [...budgets].sort((a, b) => b.spent - a.spent);
+  const existingCats = budgets.map(b => b.cat);
+
+  return (
+    <FullSheet onClose={onClose} title="Presupuestos">
+      <div style={{ background: 'linear-gradient(135deg, #E7ECFB 0%, #F4E7FB 100%)', border: '1px solid rgba(59,91,219,0.18)', borderRadius: 22, padding: '18px 20px', marginBottom: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: T.blue }}>Total presupuestado</div>
+        <div style={{ fontFamily: 'inherit', fontWeight: 400, fontSize: 44, lineHeight: 1, marginTop: 4, color: T.ink, letterSpacing: -1 }}>{fmt(totalLimit)}</div>
+        <div style={{ fontSize: 12, color: T.ink2, marginTop: 6 }}>Gastado: {fmt(totalSpent)} · {pctGlobal}% del presupuesto</div>
+        <div style={{ marginTop: 12 }}>
+          <Progress value={pctGlobal} color={pctGlobal > 90 ? T.red : pctGlobal > 70 ? T.gold : T.blue} height={8} />
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+        {sorted.map(b => {
+          const c = APP_DATA.categories[b.cat];
+          const pct = b.limit > 0 ? Math.round((b.spent / b.limit) * 100) : 0;
+          const over = pct > 100;
+          return (
+            <Card key={b.cat} pad={14}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <CatIcon cat={b.cat} size={40} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 700, color: T.ink }}>{c?.name || b.cat}</div>
+                  <div style={{ fontSize: 12, color: T.muted, marginTop: 1 }}>{fmt(b.spent)} gastado de {fmt(b.limit)}</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: over ? T.red : T.ink }}>{pct}%</div>
+                  <button onClick={() => setSheetMode(b)} style={{ border: 'none', background: T.soft, color: T.ink2, width: 32, height: 32, borderRadius: 10, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✏️</button>
+                </div>
+              </div>
+              <Progress value={Math.min(100, pct)} color={over ? T.red : c?.color || T.blue} height={6} />
+              <div style={{ fontSize: 11, color: over ? T.red : T.muted, marginTop: 5, fontWeight: over ? 700 : 400 }}>
+                {over ? `${pct - 100}% sobre presupuesto · excedido por ${fmt(b.spent - b.limit)}` : `Quedan ${fmt(b.limit - b.spent)} disponibles`}
+              </div>
+            </Card>
+          );
+        })}
+        {sorted.length === 0 && (
+          <Card style={{ textAlign: 'center', padding: '32px 20px' }}>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>🎯</div>
+            <div style={{ fontWeight: 600, color: T.muted }}>Sin presupuestos activos</div>
+            <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>Agrega categorías para controlar tus gastos mensuales</div>
+          </Card>
+        )}
+      </div>
+
+      <button onClick={() => setSheetMode('add')} style={{ width: '100%', border: '1.5px dashed ' + T.border, background: 'transparent', padding: '16px', borderRadius: 16, fontSize: 14, fontWeight: 700, color: T.ink2, cursor: 'pointer', fontFamily: 'inherit' }}>+ Agregar presupuesto</button>
+
+      {sheetMode && (
+        <BudgetEditSheet
+          onClose={() => setSheetMode(null)}
+          onSave={(b) => { onSave(b); setSheetMode(null); }}
+          onDelete={sheetMode !== 'add' ? (cat) => { onDelete(cat); setSheetMode(null); } : undefined}
+          initialValues={sheetMode !== 'add' ? sheetMode : undefined}
+          existingCats={existingCats}
+        />
+      )}
+    </FullSheet>
+  );
+}
+
+function BudgetEditSheet({ onClose, onSave, onDelete, initialValues, existingCats }) {
+  const isEditing = !!initialValues;
+  const [cat, setCat]     = React.useState(initialValues?.cat || null);
+  const [limit, setLimit] = React.useState(initialValues?.limit ? String(initialValues.limit) : '');
+  const [confirmDel, setConfirmDel] = React.useState(false);
+
+  const availableCats = Object.entries(APP_DATA.categories).filter(([id]) =>
+    isEditing || !(existingCats || []).includes(id)
+  );
+
+  const canSave = cat && Number(limit) > 0;
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(20,18,15,0.5)', display: 'flex', alignItems: 'flex-end', animation: 'fadeIn 200ms ease' }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: T.bg, width: '100%', borderRadius: '28px 28px 0 0', padding: '8px 18px 32px', maxHeight: '88%', overflow: 'auto', animation: 'slideUp 280ms cubic-bezier(.2,.7,.3,1)' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0 14px' }}>
+          <div style={{ width: 38, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.18)' }} />
+        </div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: T.ink, marginBottom: 20 }}>{isEditing ? 'Editar presupuesto' : 'Nuevo presupuesto'}</div>
+
+        <div style={{ fontSize: 12, fontWeight: 700, color: T.muted, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 10 }}>Categoría</div>
+        {isEditing ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: T.card, border: '1px solid ' + T.border, borderRadius: 14, marginBottom: 20 }}>
+            <CatIcon cat={cat} size={38} />
+            <div style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>{APP_DATA.categories[cat]?.name || cat}</div>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 20 }}>
+            {availableCats.map(([id, c]) => (
+              <button key={id} onClick={() => setCat(id)} style={{ border: '1.5px solid ' + (cat === id ? c.color : T.border), background: cat === id ? c.color + '14' : '#fff', borderRadius: 14, padding: '10px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <div style={{ fontSize: 22 }}>{c.icon}</div>
+                <div style={{ fontSize: 10, fontWeight: 600, color: cat === id ? c.color : T.ink2, textAlign: 'center', lineHeight: 1.2 }}>{c.name}</div>
+              </button>
+            ))}
+            {availableCats.length === 0 && (
+              <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '20px 0', color: T.muted, fontSize: 13 }}>Todas las categorías ya tienen presupuesto ✅</div>
+            )}
+          </div>
+        )}
+
+        <div style={{ fontSize: 12, fontWeight: 700, color: T.muted, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8 }}>Límite mensual</div>
+        <div style={{ position: 'relative', marginBottom: 24 }}>
+          <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: T.muted }}>$</span>
+          <input
+            autoFocus value={limit} onChange={e => setLimit(e.target.value.replace(/[^\d.]/g, ''))}
+            placeholder="0" inputMode="decimal"
+            style={{ width: '100%', boxSizing: 'border-box', paddingLeft: 30, paddingRight: 14, paddingTop: 15, paddingBottom: 15, borderRadius: 14, border: '1px solid ' + T.border, background: '#fff', fontSize: 22, fontFamily: 'inherit', fontWeight: 700, color: T.ink, outline: 'none', letterSpacing: -0.5 }}
+          />
+        </div>
+
+        <button disabled={!canSave} onClick={() => onSave({ cat, limit: Number(limit) })} style={{ width: '100%', border: 'none', cursor: canSave ? 'pointer' : 'not-allowed', background: canSave ? T.ink : T.soft, color: canSave ? '#fff' : T.muted, padding: '16px', borderRadius: 16, fontSize: 15, fontWeight: 700, fontFamily: 'inherit', transition: 'all 200ms', marginBottom: isEditing && onDelete ? 10 : 0 }}>
+          {isEditing ? 'Actualizar límite' : 'Guardar presupuesto'}
+        </button>
+
+        {isEditing && onDelete && (
+          <button onClick={() => {
+            if (confirmDel) { onDelete(cat); }
+            else setConfirmDel(true);
+          }} style={{ width: '100%', border: '1px solid ' + (confirmDel ? T.red : T.border), background: confirmDel ? T.red + '12' : 'transparent', color: confirmDel ? T.red : T.muted, padding: '14px', borderRadius: 16, fontSize: 14, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', marginTop: 2 }}>
+            {confirmDel ? '¿Confirmar eliminación?' : 'Eliminar presupuesto'}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1197,5 +1279,5 @@ function UpcomingAddSheet({ onClose, onAdd, activeMember }) {
 
 Object.assign(window, {
   AccountsStrip, AccountsModal, ScanModal, RemindersModal, AssistantModal, FullSheet,
-  UpcomingModal, UpcomingAddSheet,
+  UpcomingModal, UpcomingAddSheet, PresupuestosModal, BudgetEditSheet,
 });
