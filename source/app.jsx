@@ -446,6 +446,8 @@ function App() {
       user={{ name: activeMember?.name || '' }}
       activeMember={activeMember}
       transactions={txs}
+      goals={goals}
+      budgets={liveBudgets}
       onAction={(action) => {
         if (action === 'presupuestos') { setBudgetsOpen(true); return; }
         if (action === 'recurrentes')  { setUpcomingOpen(true); return; }

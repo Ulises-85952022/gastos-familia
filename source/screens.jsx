@@ -526,23 +526,83 @@ const secondaryBtn = {
 // ═══════════════════════════════════════════════════════════
 // FAMILIA
 // ═══════════════════════════════════════════════════════════
-function FamiliaScreen({ user, activeMember, transactions, onAction }) {
+function FamiliaScreen({ user, activeMember, transactions, onAction, goals, budgets }) {
   const ym = new Date().toISOString().slice(0, 7);
+
+  // Per-member breakdown (current month)
   const contribByMember = {};
   (transactions || []).forEach(t => {
-    if (!contribByMember[t.who]) contribByMember[t.who] = { in: 0, out: 0, sav: 0, inAll: 0, outAll: 0, savAll: 0 };
-    contribByMember[t.who].inAll  += t.kind === 'ingreso' ? t.amount : 0;
-    contribByMember[t.who].outAll += t.kind === 'gasto'   ? t.amount : 0;
-    contribByMember[t.who].savAll += t.kind === 'ahorro'  ? t.amount : 0;
+    if (!contribByMember[t.who]) contribByMember[t.who] = { in: 0, out: 0, sav: 0 };
     if (t.date && t.date.startsWith(ym)) {
-      if (t.kind === 'ingreso') contribByMember[t.who].in  += t.amount;
+      if (t.kind === 'ingreso') contribByMember[t.who].in += t.amount;
       else if (t.kind === 'gasto') contribByMember[t.who].out += t.amount;
       else contribByMember[t.who].sav += t.amount;
     }
   });
+
+  // Month totals
+  const txMonth = (transactions || []).filter(t => t.date && t.date.startsWith(ym));
+  const totIncome  = txMonth.filter(t => t.kind === 'ingreso').reduce((s, t) => s + t.amount, 0);
+  const totExpense = txMonth.filter(t => t.kind === 'gasto').reduce((s, t) => s + t.amount, 0);
+
+  // Category spending breakdown
+  const spentByCat = {};
+  txMonth.filter(t => t.kind === 'gasto').forEach(t => {
+    if (t.cat) spentByCat[t.cat] = (spentByCat[t.cat] || 0) + t.amount;
+  });
+  const topCats = Object.entries(spentByCat)
+    .map(([cat, amt]) => ({ cat, amt }))
+    .sort((a, b) => b.amt - a.amt)
+    .slice(0, 6);
+  const maxCatAmt = topCats.length > 0 ? topCats[0].amt : 1;
+
+  // Health score
+  const liveBudgets = budgets || [];
+  const overBudgetCount = liveBudgets.filter(b => b.spent > b.limit).length;
+  const budgetAdherence = liveBudgets.length > 0 ? (liveBudgets.length - overBudgetCount) / liveBudgets.length : 1;
+  const savingsRate = totIncome > 0 ? (totIncome - totExpense) / totIncome : 0;
+
+  let score = 50;
+  if (savingsRate >= 0.2) score += 20;
+  else if (savingsRate >= 0.1) score += 10;
+  else if (savingsRate < 0) score -= 15;
+  if (budgetAdherence >= 1) score += 20;
+  else if (budgetAdherence >= 0.8) score += 10;
+  else if (budgetAdherence < 0.5) score -= 10;
+  if (totIncome > 0 && totExpense < totIncome) score += 10;
+  score = Math.max(0, Math.min(100, score));
+
+  const healthLabel = score >= 80 ? 'Excelente' : score >= 60 ? 'Bien' : score >= 40 ? 'Regular' : 'Atención';
+  const healthEmoji = score >= 80 ? '🌟' : score >= 60 ? '👍' : score >= 40 ? '🤔' : '⚠️';
+  const healthColor = score >= 80 ? T.green : score >= 60 ? '#F59F00' : score >= 40 ? '#F76707' : T.red;
+
+  // Smart tips
+  const tips = [];
+  if (totIncome > 0 && savingsRate < 0.1) {
+    tips.push({ icon: '💡', text: `Estás gastando el ${Math.round(Math.min(100, (totExpense / totIncome) * 100))}% de tus ingresos. Intenta reducir en categorías no esenciales.` });
+  }
+  if (savingsRate >= 0.2) {
+    tips.push({ icon: '🎉', text: `¡Excelente! Estás ahorrando el ${Math.round(savingsRate * 100)}% de tus ingresos este mes.` });
+  }
+  if (overBudgetCount > 0) {
+    const overNames = liveBudgets.filter(b => b.spent > b.limit).map(b => APP_DATA.categories[b.cat]?.name || b.cat);
+    tips.push({ icon: '⚠️', text: `Excediste tu presupuesto en: ${overNames.join(', ')}.` });
+  }
+  if (topCats.length > 0 && totExpense > 0) {
+    const top = topCats[0];
+    const pct = Math.round((top.amt / totExpense) * 100);
+    if (pct > 35) {
+      tips.push({ icon: '📊', text: `${APP_DATA.categories[top.cat]?.name || top.cat} representa el ${pct}% de tus gastos del mes.` });
+    }
+  }
+  if (tips.length === 0) {
+    tips.push({ icon: '✅', text: 'Sin movimientos este mes. Registra tus gastos para ver consejos personalizados.' });
+  }
+
   const me = activeMember || APP_DATA.members[0];
   const isFamiliaMode = me.id === 'familia';
   const realMembers = APP_DATA.members;
+  const budgetCount = liveBudgets.length;
 
   return (
     <div style={{ padding: '0 18px 120px', display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -550,6 +610,110 @@ function FamiliaScreen({ user, activeMember, transactions, onAction }) {
         <div style={{ fontSize: 13, color: T.muted, fontWeight: 500 }}>{APP_DATA.user.family}</div>
         <div style={{ fontSize: 24, fontWeight: 700, color: T.ink, letterSpacing: -0.3 }}>Familia</div>
       </div>
+
+      {/* Salud Financiera */}
+      <Card pad={20} style={{ background: 'linear-gradient(135deg, #1A1815 0%, #2D2926 100%)', border: 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 4 }}>Salud financiera</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: -0.3 }}>{healthEmoji} {healthLabel}</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 36, fontWeight: 800, color: healthColor, lineHeight: 1 }}>{score}</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>/ 100</div>
+          </div>
+        </div>
+        <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 999, overflow: 'hidden', marginBottom: 16 }}>
+          <div style={{ height: '100%', width: score + '%', background: healthColor, borderRadius: 999, transition: 'width 600ms cubic-bezier(.2,.7,.3,1)' }} />
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ flex: 1, background: 'rgba(255,255,255,0.07)', borderRadius: 12, padding: '10px 12px', textAlign: 'center' }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: totIncome > 0 ? T.green : 'rgba(255,255,255,0.4)' }}>
+              {totIncome > 0 ? Math.round(Math.max(0, savingsRate) * 100) + '%' : '—'}
+            </div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', fontWeight: 600, marginTop: 2 }}>Tasa ahorro</div>
+          </div>
+          <div style={{ flex: 1, background: 'rgba(255,255,255,0.07)', borderRadius: 12, padding: '10px 12px', textAlign: 'center' }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: totIncome > 0 ? (totExpense / totIncome > 0.9 ? T.red : '#F59F00') : 'rgba(255,255,255,0.4)' }}>
+              {totIncome > 0 ? Math.round((totExpense / totIncome) * 100) + '%' : '—'}
+            </div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', fontWeight: 600, marginTop: 2 }}>Uso ingresos</div>
+          </div>
+          <div style={{ flex: 1, background: 'rgba(255,255,255,0.07)', borderRadius: 12, padding: '10px 12px', textAlign: 'center' }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: overBudgetCount > 0 ? T.red : T.green }}>
+              {liveBudgets.length > 0 ? `${liveBudgets.length - overBudgetCount}/${liveBudgets.length}` : '—'}
+            </div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', fontWeight: 600, marginTop: 2 }}>Presup. OK</div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Category breakdown */}
+      {topCats.length > 0 && (
+        <Section title="Gastos por categoría">
+          <Card pad={16}>
+            {topCats.map(({ cat, amt }, i) => {
+              const catMeta = APP_DATA.categories[cat] || { name: cat, icon: '✨', color: T.muted };
+              const budget = liveBudgets.find(b => b.cat === cat);
+              const pct = totExpense > 0 ? Math.round((amt / totExpense) * 100) : 0;
+              const isOver = budget && amt > budget.limit;
+              const barPct = maxCatAmt > 0 ? (amt / maxCatAmt) * 100 : 0;
+              return (
+                <div key={cat} style={{ marginBottom: i < topCats.length - 1 ? 14 : 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                    <div style={{ fontSize: 16 }}>{catMeta.icon}</div>
+                    <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: T.ink }}>{catMeta.name}</div>
+                    {isOver && <div style={{ fontSize: 9, fontWeight: 800, color: T.red, background: T.redSoft, padding: '2px 6px', borderRadius: 4 }}>EXCEDIDO</div>}
+                    <div style={{ fontSize: 12, color: T.muted, fontWeight: 600 }}>{pct}%</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: isOver ? T.red : T.ink }}>{fmt(amt, { abbr: true })}</div>
+                  </div>
+                  <div style={{ height: 5, background: T.soft, borderRadius: 999, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: barPct + '%', background: isOver ? T.red : catMeta.color, borderRadius: 999 }} />
+                  </div>
+                  {budget && <div style={{ fontSize: 10.5, color: isOver ? T.red : T.muted, marginTop: 3, textAlign: 'right', fontWeight: 600 }}>
+                    {isOver ? `Excediste por ${fmt(amt - budget.limit, { abbr: true })}` : `${fmt(budget.limit - amt, { abbr: true })} restante`}
+                  </div>}
+                </div>
+              );
+            })}
+          </Card>
+        </Section>
+      )}
+
+      {/* Goals mini scroll */}
+      {(goals || []).length > 0 && (
+        <Section title="Metas de ahorro">
+          <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
+            {(goals || []).map(g => {
+              const pct = g.target > 0 ? Math.min(100, Math.round((g.saved / g.target) * 100)) : 0;
+              return (
+                <div key={g.id} style={{ minWidth: 140, background: T.card, borderRadius: 16, padding: 14, border: '1px solid ' + T.border, flexShrink: 0 }}>
+                  <div style={{ fontSize: 22, marginBottom: 6 }}>{g.icon || '🎯'}</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: T.ink, marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.name}</div>
+                  <div style={{ height: 4, background: T.soft, borderRadius: 999, overflow: 'hidden', marginBottom: 5 }}>
+                    <div style={{ height: '100%', width: pct + '%', background: T.blue, borderRadius: 999 }} />
+                  </div>
+                  <div style={{ fontSize: 11, color: T.muted, fontWeight: 600 }}>{pct}% · {fmt(g.saved, { abbr: true })} / {fmt(g.target, { abbr: true })}</div>
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* Smart tips */}
+      <Section title="Consejos">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {tips.map((tip, i) => (
+            <Card key={i} pad={14} style={{ background: T.soft, border: 'none' }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <div style={{ fontSize: 18, flexShrink: 0, lineHeight: 1.2 }}>{tip.icon}</div>
+                <div style={{ fontSize: 13, color: T.ink2, lineHeight: 1.45 }}>{tip.text}</div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </Section>
 
       {/* Month report — per member breakdown */}
       <Card pad={18}>
@@ -612,31 +776,6 @@ function FamiliaScreen({ user, activeMember, transactions, onAction }) {
         </div>
       </Card>}
 
-      {/* Sharing explanation */}
-      <Card pad={16}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 10 }}>Cómo funciona la familia</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <div style={{ fontSize: 16 }}>👀</div>
-            <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.4 }}>
-              <b>Todos ven todo.</b> Movimientos, presupuestos, metas y cuentas son transparentes para la familia.
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <div style={{ fontSize: 16 }}>🔒</div>
-            <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.4 }}>
-              <b>Cada quien sólo mueve lo suyo.</b> El selector "registrado por" siempre eres tú.
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <div style={{ fontSize: 16 }}>🤝</div>
-            <div style={{ fontSize: 12.5, color: T.ink2, lineHeight: 1.4 }}>
-              <b>Cuentas compartidas:</b> los titulares (ej. tú y Carla) pueden mover ambos.
-            </div>
-          </div>
-        </div>
-      </Card>
-
       <Section title="Miembros" action="+ Invitar" onAction={() => onAction && onAction('invite')}>
         <Card pad={0}>
           {APP_DATA.members.filter(m => isFamiliaMode || m.id !== me.id).map((m, i, arr) => {
@@ -694,7 +833,7 @@ function FamiliaScreen({ user, activeMember, transactions, onAction }) {
         <Card pad={0}>
           {[
             { i: '🔔', l: 'Notificaciones',    s: 'Alertas, recordatorios',   a: 'notificaciones' },
-            { i: '🎯', l: 'Presupuestos',      s: '8 categorías activas',     a: 'presupuestos' },
+            { i: '🎯', l: 'Presupuestos',      s: budgetCount > 0 ? `${budgetCount} categorías activas` : 'Sin presupuestos', a: 'presupuestos' },
             { i: '🔁', l: 'Pagos recurrentes', s: '12 servicios',             a: 'recurrentes' },
             { i: '📤', l: 'Exportar a Excel',  s: 'CSV / XLSX',               a: 'exportar' },
             { i: '🌙', l: 'Apariencia',        s: 'Claro · Auto · Oscuro',    a: 'apariencia' },
